@@ -145,6 +145,21 @@ func (r *registry) GetOfType(t pb2.Type) ([]*pb2.Info, error) {
 	return infos, nil
 }
 
+func (r *registry) FirstOfType(t pb2.Type) (*pb2.Info, error) {
+	var infos []*pb2.Info
+	r.store.Range(func(key, value interface{}) bool {
+		i := value.(*pb2.Info)
+		if i.Type == t {
+			infos = append(infos, i)
+		}
+		return true
+	})
+	if len(infos) > 0 {
+		return infos[0], nil
+	}
+	return nil, errors.NotFound
+}
+
 func (r *registry) Stop() error {
 	if r.stopper != nil {
 		return r.stopper.Stop()
