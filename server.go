@@ -110,6 +110,7 @@ func Serve(configs *ServerConfig) (pb2.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Info("[discovery] starting gRPC server", log.Field("at", s.listener.Addr()))
 
 	s.store = &sync.Map{}
 	s.eventHandlers = map[string]pb2.EventHandler{}
