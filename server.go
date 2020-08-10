@@ -1,12 +1,12 @@
 package discover
 
 import (
-	"github.com/omecodes/common/codec"
-	"github.com/omecodes/common/doer"
 	"github.com/omecodes/common/errors"
-	"github.com/omecodes/common/log"
 	"github.com/omecodes/common/netx"
-	pb2 "github.com/omecodes/common/proto/service"
+	pb2 "github.com/omecodes/common/ome/proto/service"
+	"github.com/omecodes/common/utils/codec"
+	"github.com/omecodes/common/utils/doer"
+	"github.com/omecodes/common/utils/log"
 	"github.com/omecodes/zebou"
 	pb "github.com/omecodes/zebou/proto"
 	"net"

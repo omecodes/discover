@@ -2,11 +2,11 @@ package discover
 
 import (
 	"github.com/google/uuid"
-	"github.com/omecodes/common/codec"
-	"github.com/omecodes/common/doer"
 	"github.com/omecodes/common/errors"
-	"github.com/omecodes/common/log"
-	pb2 "github.com/omecodes/common/proto/service"
+	pb2 "github.com/omecodes/common/ome/proto/service"
+	"github.com/omecodes/common/utils/codec"
+	"github.com/omecodes/common/utils/doer"
+	"github.com/omecodes/common/utils/log"
 	pb "github.com/omecodes/zebou/proto"
 	"strings"
 	"sync"

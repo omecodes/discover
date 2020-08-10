@@ -2,8 +2,8 @@ package discover
 
 import (
 	"crypto/tls"
-	"github.com/omecodes/common/log"
-	pb2 "github.com/omecodes/common/proto/service"
+	pb2 "github.com/omecodes/common/ome/proto/service"
+	"github.com/omecodes/common/utils/log"
 	"github.com/omecodes/zebou"
 	pb "github.com/omecodes/zebou/proto"
 	"sync"
