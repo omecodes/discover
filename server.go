@@ -2,7 +2,7 @@ package discover
 
 import (
 	"github.com/omecodes/common/errors"
-	"github.com/omecodes/common/netx"
+	"github.com/omecodes/common/ome/netx"
 	pb2 "github.com/omecodes/common/ome/proto/service"
 	"github.com/omecodes/common/utils/codec"
 	"github.com/omecodes/common/utils/doer"
