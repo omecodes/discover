@@ -3,10 +3,10 @@ package discover
 import (
 	"github.com/google/uuid"
 	"github.com/omecodes/common/errors"
-	pb2 "github.com/omecodes/common/ome/proto/service"
 	"github.com/omecodes/common/utils/codec"
 	"github.com/omecodes/common/utils/doer"
 	"github.com/omecodes/common/utils/log"
+	pb2 "github.com/omecodes/libome/proto/service"
 	pb "github.com/omecodes/zebou/proto"
 	"strings"
 	"sync"
