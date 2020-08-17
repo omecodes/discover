@@ -173,7 +173,7 @@ func (r *registry) Handle(msg *pb.SyncMessage) {
 		info := new(pb2.Info)
 		err := codec.Json.Decode(msg.Encoded, info)
 		if err != nil {
-			log.Error("failed to decode service info", err)
+			log.Error("failed to decode service info", log.Err(err))
 			return
 		}
 		r.store.Store(msg.Id, info)

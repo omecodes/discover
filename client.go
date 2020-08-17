@@ -38,7 +38,7 @@ func NewMSGClient(server string, tlsConfig *tls.Config) *msgClient {
 				)
 
 				if err != nil {
-					log.Error("failed to send message", err)
+					log.Error("failed to send message", log.Err(err))
 					return false
 				}
 				return true
