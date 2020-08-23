@@ -97,6 +97,8 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *pb.SyncMessage) {
 			return
 		}
 
+		log.Info(msg.Type, log.Field("service", info.Id))
+
 		err = zebou.Broadcast(ctx, msg)
 		if err != nil {
 			log.Error("failed to broadcast service info", log.Err(err))
@@ -112,8 +114,12 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *pb.SyncMessage) {
 
 	case pb2.EventType_DeRegister.String():
 		err := s.store.Delete(peer.ID, msg.Id)
-		log.Error("could not delete service info", log.Err(err), log.Field("service", msg.Id))
+		if err != nil {
+			log.Error("could not delete service info", log.Err(err), log.Field("service", msg.Id))
+			return
+		}
 
+		log.Info(msg.Type, log.Field("service", msg.Id))
 		s.notifyEvent(&pb2.Event{
 			Type:      pb2.EventType_DeRegister,
 			ServiceId: msg.Id,
@@ -142,6 +148,8 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *pb.SyncMessage) {
 			log.Error("failed to update service info", log.Err(err), log.Field("service", msg.Id))
 			return
 		}
+
+		log.Info(msg.Type, log.Field("nodes", string(msg.Encoded)))
 
 		s.notifyEvent(&pb2.Event{
 			Type:      pb2.EventType_DeRegisterNode,
