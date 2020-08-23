@@ -377,6 +377,12 @@ func Serve(configs *ServerConfig) (pb2.Registry, error) {
 		return nil, err
 	}
 
+	err = s.store.Clear()
+	if err != nil {
+		log.Error("failed to reset registry store", log.Err(err))
+		return nil, err
+	}
+
 	s.hub, err = zebou.Serve(s.listener, s)
 	if err != nil {
 		return nil, err
