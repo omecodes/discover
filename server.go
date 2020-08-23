@@ -44,38 +44,52 @@ func (s *msgServer) NewClient(ctx context.Context, info *zebou.PeerInfo) {
 }
 
 func (s *msgServer) ClientQuit(ctx context.Context, peer *zebou.PeerInfo) {
-	if peer != nil {
-		log.Info("client disconnected", log.Field("conn_id", peer.ID), log.Field("addr", peer.Address))
-		c, err := s.store.GetForFirst(peer.ID)
+	log.Info("client disconnected", log.Field("conn_id", peer.ID), log.Field("addr", peer.Address))
+	services, err := s.getFromClient(peer.ID)
+	if err != nil {
+		log.Error("could not get client registered services", log.Err(err))
+	}
+
+	err = s.store.DeleteAllMatchingFirstKey(peer.ID)
+	if err != nil {
+		log.Error("could not delete client registered services", log.Err(err))
+		return
+	}
+
+	for _, info := range services {
+		encoded, err := codec.Json.Encode(info)
 		if err != nil {
-			log.Error("failed to get registered nodes", log.Field("conn_id", peer.ID), log.Field("addr", peer.Address))
+			log.Error("failed to encode service info", log.Err(err))
 			return
 		}
 
-		for c.HasNext() {
-			var info pb2.Info
-			id, err := c.Next(&info)
-			if err != nil {
-				log.Error("failed to parse service info", log.Err(err))
-				return
-			}
-
-			encoded, err := codec.Json.Encode(info)
-			if err != nil {
-				log.Error("failed to encode service info", log.Err(err))
-				return
-			}
-
-			s.hub.Broadcast(ctx, &pb.SyncMessage{
-				Type:    pb2.EventType_DeRegisterNode.String(),
-				Id:      id,
-				Encoded: encoded,
-			})
-		}
-
-	} else {
-		log.Info("client disconnected")
+		s.hub.Broadcast(ctx, &pb.SyncMessage{
+			Type:    pb2.EventType_DeRegister.String(),
+			Id:      peer.ID,
+			Encoded: encoded,
+		})
 	}
+}
+
+func (s *msgServer) getFromClient(id string) ([]*pb2.Info, error) {
+	c, err := s.store.GetForFirst(id)
+	if err != nil {
+		log.Error("failed to get registered nodes", log.Field("conn_id", id))
+		return nil, err
+	}
+	defer c.Close()
+
+	var result []*pb2.Info
+	for c.HasNext() {
+		var info pb2.Info
+		_, err := c.Next(&info)
+		if err != nil {
+			log.Error("failed to parse service info", log.Err(err))
+			return nil, err
+		}
+		result = append(result, &info)
+	}
+	return result, nil
 }
 
 func (s *msgServer) OnMessage(ctx context.Context, msg *pb.SyncMessage) {
