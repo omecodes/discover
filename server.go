@@ -350,7 +350,7 @@ func Serve(configs *ServerConfig) (pb2.Registry, error) {
 		return nil, err
 	}
 
-	s.store, err = mapping.NewSQL("sqlite", db, "reg", codec.Json)
+	s.store, err = mapping.NewSQL("sqlite3", db, "reg", codec.Json)
 	if err != nil {
 		return nil, err
 	}
