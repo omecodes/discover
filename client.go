@@ -172,6 +172,7 @@ func (m *msgClient) Stop() error {
 func NewMSGClient(server string, tlsConfig *tls.Config) *msgClient {
 	c := new(msgClient)
 	c.store = new(sync.Map)
+	c.handlers = map[string]pb2.EventHandler{}
 
 	c.messenger = zebou.Connect(server, tlsConfig)
 	c.messenger.SetConnectionSateHandler(zebou.ConnectionStateHandlerFunc(func(active bool) {
