@@ -94,7 +94,7 @@ func (s *msgServer) ClientQuit(ctx context.Context, peer *zebou.PeerInfo) {
 
 		s.hub.Broadcast(ctx, &pb.SyncMessage{
 			Type:    pb2.EventType_DeRegister.String(),
-			Id:      peer.ID,
+			Id:      info.Id,
 			Encoded: encoded,
 		})
 	}
