@@ -169,6 +169,80 @@ func (m *msgClient) Stop() error {
 	return nil
 }
 
+func (m *msgClient) handleInbound() {
+	for {
+		msg, err := m.messenger.GetMessage()
+		if err != nil {
+			log.Error("failed to get next message", log.Err(err))
+			continue
+		}
+
+		switch msg.Type {
+		case pb2.EventType_Update.String(), pb2.EventType_Register.String():
+			info := new(pb2.Info)
+			err := codec.Json.Decode(msg.Encoded, info)
+			if err != nil {
+				log.Error("failed to decode service info from message payload", log.Err(err))
+				return
+			}
+
+			m.store.Store(msg.Id, info)
+
+			log.Info(msg.Type, log.Field("service", info.Id))
+			event := &pb2.Event{
+				ServiceId: msg.Id,
+				Info:      info,
+			}
+			event.Type = pb2.EventType(pb2.EventType_value[msg.Type])
+			m.notifyEvent(event)
+
+		case pb2.EventType_DeRegister.String():
+			m.store.Delete(msg.Id)
+			log.Info(msg.Type, log.Field("service", msg.Id))
+			m.notifyEvent(&pb2.Event{
+				Type:      pb2.EventType_DeRegister,
+				ServiceId: msg.Id,
+			})
+
+		case pb2.EventType_DeRegisterNode.String():
+
+			o, ok := m.store.Load(msg.Id)
+			if ok {
+				info := o.(*pb2.Info)
+
+				nodeId := string(msg.Encoded)
+				var newNodes []*pb2.Node
+				for _, node := range info.Nodes {
+					if node.Id != nodeId {
+						newNodes = append(newNodes, node)
+					}
+				}
+
+				info.Nodes = newNodes
+				m.store.Store(msg.Id, info)
+				log.Info(msg.Type, log.Field("nodes", string(msg.Encoded)))
+
+				m.notifyEvent(&pb2.Event{
+					Type:      pb2.EventType_DeRegisterNode,
+					ServiceId: msg.Id,
+				})
+			}
+
+		default:
+			log.Info("received unsupported msg type", log.Field("type", msg.Type))
+		}
+	}
+}
+
+func (m *msgClient) notifyEvent(e *pb2.Event) {
+	m.Lock()
+	defer m.Unlock()
+
+	for _, h := range m.handlers {
+		h.Handle(e)
+	}
+}
+
 func NewMSGClient(server string, tlsConfig *tls.Config) *msgClient {
 	c := new(msgClient)
 	c.store = new(sync.Map)
@@ -194,5 +268,7 @@ func NewMSGClient(server string, tlsConfig *tls.Config) *msgClient {
 			log.Info("sent all info to server")
 		}
 	}))
+	go c.handleInbound()
+
 	return c
 }

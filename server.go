@@ -34,12 +34,41 @@ type msgServer struct {
 	store    mapping.DoubleMap
 }
 
-func (s *msgServer) NewClient(ctx context.Context, info *zebou.PeerInfo) {
-	peer := zebou.Peer(ctx)
+func (s *msgServer) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
 	if peer != nil {
 		log.Info("new client connected", log.Field("conn_id", peer.ID), log.Field("addr", peer.Address))
 	} else {
 		log.Info("new client connected")
+	}
+
+	c, err := s.store.GetAll()
+	if err != nil {
+		log.Error("could not load services list from store", log.Err(err))
+		return
+	}
+
+	for c.HasNext() {
+		var info pb2.Info
+		err = c.Next(&info)
+		if err != nil {
+			log.Error("failed to parse service info", log.Err(err))
+			return
+		}
+		encoded, err := codec.Json.Encode(info)
+		if err != nil {
+			log.Error("failed to json encode service info", log.Err(err))
+			return
+		}
+
+		err = zebou.Send(ctx, &pb.SyncMessage{
+			Type:    pb2.EventType_Register.String(),
+			Id:      info.Id,
+			Encoded: encoded,
+		})
+		if err != nil {
+			log.Error("could not send message", log.Err(err))
+			return
+		}
 	}
 }
 
@@ -112,12 +141,6 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *pb.SyncMessage) {
 		}
 
 		log.Info(msg.Type, log.Field("service", info.Id))
-
-		err = zebou.Broadcast(ctx, msg)
-		if err != nil {
-			log.Error("failed to broadcast service info", log.Err(err))
-			return
-		}
 
 		event := &pb2.Event{
 			ServiceId: msg.Id,
