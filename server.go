@@ -199,6 +199,11 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *pb.SyncMessage) {
 }
 
 func (s *msgServer) RegisterService(i *pb2.Info) error {
+	err := s.store.Set("ome", i.Id, i)
+	if err != nil {
+		return err
+	}
+
 	encoded, err := codec.Json.Encode(i)
 	if err != nil {
 		return err
@@ -224,6 +229,32 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 	}
 
 	if len(nodes) > 0 {
+		var info pb2.Info
+		err := s.store.Get("ome", id, &info)
+		if err != nil {
+			return err
+		}
+
+		var newNodes []*pb2.Node
+		for _, node := range info.Nodes {
+			deleted := true
+			for _, nodeId := range nodes {
+				if nodeId == node.Id {
+					deleted = false
+					break
+				}
+			}
+
+			if !deleted {
+				newNodes = append(newNodes, node)
+			}
+		}
+		info.Nodes = newNodes
+		err = s.store.Set("ome", msg.Id, info)
+		if err != nil {
+			return err
+		}
+
 		encoded := []byte(strings.Join(nodes, "|"))
 		msg.Encoded = encoded
 		msg.Type = pb2.EventType_DeRegisterNode.String()
@@ -235,6 +266,11 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 		go s.notifyEvent(ev)
 
 	} else {
+		err := s.store.Delete("ome", id)
+		if err != nil {
+			return err
+		}
+
 		msg.Type = pb2.EventType_DeRegister.String()
 		s.hub.Broadcast(context.Background(), msg)
 		ev := &pb2.Event{
