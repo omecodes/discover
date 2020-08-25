@@ -215,7 +215,7 @@ func (s *msgServer) RegisterService(i *pb2.Info) error {
 	}
 	s.hub.Broadcast(context.Background(), msg)
 
-	go s.notifyEvent(&pb2.Event{
+	s.notifyEvent(&pb2.Event{
 		Type:      pb2.EventType_Register,
 		ServiceId: i.Id,
 		Info:      i,
@@ -263,7 +263,7 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 			Type:      pb2.EventType_DeRegisterNode,
 			ServiceId: fmt.Sprintf("%s:%s", id, encoded),
 		}
-		go s.notifyEvent(ev)
+		s.notifyEvent(ev)
 
 	} else {
 		err := s.store.Delete("ome", id)
@@ -277,14 +277,14 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 			Type:      pb2.EventType_DeRegister,
 			ServiceId: id,
 		}
-		go s.notifyEvent(ev)
+		s.notifyEvent(ev)
 	}
 	return nil
 }
 
 func (s *msgServer) GetService(id string) (*pb2.Info, error) {
 	var info pb2.Info
-	err := s.store.Get("local", id, &info)
+	err := s.store.Get("ome", id, &info)
 	return &info, err
 }
 
@@ -405,7 +405,7 @@ func (s *msgServer) notifyEvent(e *pb2.Event) {
 	defer s.Unlock()
 
 	for _, h := range s.handlers {
-		h.Handle(e)
+		go h.Handle(e)
 	}
 }
 
