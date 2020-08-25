@@ -239,7 +239,7 @@ func (m *msgClient) notifyEvent(e *pb2.Event) {
 	defer m.Unlock()
 
 	for _, h := range m.handlers {
-		h.Handle(e)
+		go h.Handle(e)
 	}
 }
 
