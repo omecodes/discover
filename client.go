@@ -2,6 +2,9 @@ package discover
 
 import (
 	"crypto/tls"
+	"strings"
+	"sync"
+
 	"github.com/google/uuid"
 	"github.com/omecodes/common/errors"
 	"github.com/omecodes/common/utils/codec"
@@ -10,18 +13,26 @@ import (
 	pb2 "github.com/omecodes/libome/proto/service"
 	"github.com/omecodes/zebou"
 	pb "github.com/omecodes/zebou/proto"
-	"strings"
-	"sync"
 )
 
-type msgClient struct {
-	sync.Mutex
-	handlers  map[string]pb2.EventHandler
+// MsgClient is a zebou messaging based client client
+type MsgClient struct {
+	//handlers  map[string]pb2.EventHandler
 	messenger *zebou.Client
 	store     *sync.Map
+	handlers  *sync.Map
 }
 
-func (m *msgClient) RegisterService(info *pb2.Info) error {
+// RegisterService sends register message to the discovery server
+func (m *MsgClient) RegisterService(info *pb2.Info) error {
+
+	m.store.Store(info.Id, info)
+	m.notifyEvent(&pb2.Event{
+		Type:      pb2.EventType_Register,
+		ServiceId: info.Id,
+		Info:      info,
+	})
+
 	encoded, err := codec.Json.Encode(info)
 	if err != nil {
 		log.Info("could not encode service info", log.Err(err))
@@ -39,7 +50,8 @@ func (m *msgClient) RegisterService(info *pb2.Info) error {
 	return err
 }
 
-func (m *msgClient) DeregisterService(id string, nodes ...string) error {
+// DeregisterService sends a deregister message to the discovery server
+func (m *MsgClient) DeregisterService(id string, nodes ...string) error {
 	var encoded []byte
 	msg := &pb.SyncMessage{
 		Id: id,
@@ -60,7 +72,8 @@ func (m *msgClient) DeregisterService(id string, nodes ...string) error {
 	return err
 }
 
-func (m *msgClient) GetService(id string) (*pb2.Info, error) {
+// GetService returns service info from local store that matches id
+func (m *MsgClient) GetService(id string) (*pb2.Info, error) {
 	var info *pb2.Info
 	m.store.Range(func(key, value interface{}) bool {
 		if key == id {
@@ -75,21 +88,23 @@ func (m *msgClient) GetService(id string) (*pb2.Info, error) {
 	return info, nil
 }
 
-func (m *msgClient) GetNode(id string, nodeId string) (*pb2.Node, error) {
+// GetNode returns the gRPC node of the service info from local store that matches id
+func (m *MsgClient) GetNode(id string, nodeID string) (*pb2.Node, error) {
 	info, err := m.GetService(id)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, n := range info.Nodes {
-		if n.Id == nodeId {
+		if n.Id == nodeID {
 			return n, nil
 		}
 	}
 	return nil, errors.NotFound
 }
 
-func (m *msgClient) Certificate(id string) ([]byte, error) {
+// Certificate returns the PEM encoded certificate of the service info from local store that matches id
+func (m *MsgClient) Certificate(id string) ([]byte, error) {
 	info, err := m.GetService(id)
 	if err != nil {
 		return nil, err
@@ -101,7 +116,8 @@ func (m *msgClient) Certificate(id string) ([]byte, error) {
 	return []byte(strCert), nil
 }
 
-func (m *msgClient) ConnectionInfo(id string, protocol pb2.Protocol) (*pb2.ConnectionInfo, error) {
+// ConnectionInfo finds the service frolm local store that matches id, and return the connection info of the node that implement the given transport protocol
+func (m *MsgClient) ConnectionInfo(id string, protocol pb2.Protocol) (*pb2.ConnectionInfo, error) {
 	info, err := m.GetService(id)
 	if err != nil {
 		return nil, err
@@ -123,21 +139,20 @@ func (m *msgClient) ConnectionInfo(id string, protocol pb2.Protocol) (*pb2.Conne
 	return nil, errors.NotFound
 }
 
-func (m *msgClient) RegisterEventHandler(h pb2.EventHandler) string {
-	m.Lock()
-	defer m.Unlock()
+// RegisterEventHandler adds an event handler. Returns an id that is used to deregister h
+func (m *MsgClient) RegisterEventHandler(h pb2.EventHandler) string {
 	hid := uuid.New().String()
-	m.handlers[hid] = h
+	m.handlers.Store(hid, h)
 	return hid
 }
 
-func (m *msgClient) DeregisterEventHandler(id string) {
-	m.Lock()
-	defer m.Unlock()
-	delete(m.handlers, id)
+// DeregisterEventHandler removes the event handler that match id
+func (m *MsgClient) DeregisterEventHandler(id string) {
+	m.handlers.Delete(id)
 }
 
-func (m *msgClient) GetOfType(t pb2.Type) ([]*pb2.Info, error) {
+// GetOfType gets all the service of type t
+func (m *MsgClient) GetOfType(t pb2.Type) ([]*pb2.Info, error) {
 	var result []*pb2.Info
 	m.store.Range(func(key, value interface{}) bool {
 		info := value.(*pb2.Info)
@@ -153,7 +168,8 @@ func (m *msgClient) GetOfType(t pb2.Type) ([]*pb2.Info, error) {
 	return result, nil
 }
 
-func (m *msgClient) FirstOfType(t pb2.Type) (*pb2.Info, error) {
+// FirstOfType returns the first service from local store of type t
+func (m *MsgClient) FirstOfType(t pb2.Type) (*pb2.Info, error) {
 	var info *pb2.Info
 	m.store.Range(func(key, value interface{}) bool {
 		info = value.(*pb2.Info)
@@ -165,11 +181,12 @@ func (m *msgClient) FirstOfType(t pb2.Type) (*pb2.Info, error) {
 	return info, nil
 }
 
-func (m *msgClient) Stop() error {
+// Stop closes the messaging connection
+func (m *MsgClient) Stop() error {
 	return nil
 }
 
-func (m *msgClient) handleInbound() {
+func (m *MsgClient) handleInbound() {
 	for {
 		msg, err := m.messenger.GetMessage()
 		if err != nil {
@@ -234,19 +251,19 @@ func (m *msgClient) handleInbound() {
 	}
 }
 
-func (m *msgClient) notifyEvent(e *pb2.Event) {
-	m.Lock()
-	defer m.Unlock()
-
-	for _, h := range m.handlers {
+func (m *MsgClient) notifyEvent(e *pb2.Event) {
+	m.handlers.Range(func(key, value interface{}) bool {
+		h := value.(pb2.EventHandler)
 		go h.Handle(e)
-	}
+		return true
+	})
 }
 
-func NewMSGClient(server string, tlsConfig *tls.Config) *msgClient {
-	c := new(msgClient)
+// NewMSGClient creates and initialize a discovery client based
+func NewMSGClient(server string, tlsConfig *tls.Config) *MsgClient {
+	c := new(MsgClient)
 	c.store = new(sync.Map)
-	c.handlers = map[string]pb2.EventHandler{}
+	c.handlers = new(sync.Map)
 
 	c.messenger = zebou.Connect(server, tlsConfig)
 	c.messenger.SetConnectionSateHandler(zebou.ConnectionStateHandlerFunc(func(active bool) {
