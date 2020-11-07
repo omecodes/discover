@@ -262,6 +262,8 @@ github.com/omecodes/common v0.0.0-20200903214349-239152c626f5 h1:8EZRCaJ93zxlxRm
 github.com/omecodes/common v0.0.0-20200903214349-239152c626f5/go.mod h1:2VHdEQcmHprhTjP5X3q9t7GQnv9AyeOqT4U51ztIK7A=
 github.com/omecodes/libome v0.0.0-20201107100428-c853d9b637a8 h1:vkYnpjl8tUA9bWKV8651Drghitr1PrlIlQiQ0uOXaSQ=
 github.com/omecodes/libome v0.0.0-20201107100428-c853d9b637a8/go.mod h1:4Owj3b0Zn3R1TryMpiCIyIoLvm82xaq19ddJduJr/p8=
+github.com/omecodes/libome v0.0.1 h1:nkunYrYn0Q6LzcLWZ1HyEMEZWZNOAEK5/jfa3MJAsq8=
+github.com/omecodes/libome v0.0.1/go.mod h1:4Owj3b0Zn3R1TryMpiCIyIoLvm82xaq19ddJduJr/p8=
 github.com/omecodes/zebou v0.0.0-20201107094910-b1f79ba8288b h1:lm5Z+G60G3hpgEP0lRA3/dS/CGUDv764yAwbBwH+K1U=
 github.com/omecodes/zebou v0.0.0-20201107094910-b1f79ba8288b/go.mod h1:kuLMAa+PcvgxzBt5p8icnVrARQecxj4EBQj/05rUUng=
 github.com/pascaldekloe/goe v0.0.0-20180627143212-57f6aae5913c/go.mod h1:lzWF7FIEvWOWxwDKqyGYQf6ZUaNfKdP144TG7ZOy1lc=
