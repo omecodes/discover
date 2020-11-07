@@ -309,7 +309,7 @@ func (s *msgServer) Certificate(id string) ([]byte, error) {
 		return nil, err
 	}
 
-	strCert, found := info.Meta[pb2.MetaServiceCertificate]
+	strCert, found := info.Meta["certificate"]
 	if !found {
 		return nil, errors.NotFound
 	}
