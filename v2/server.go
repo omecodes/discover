@@ -10,7 +10,7 @@ import (
 	"github.com/omecodes/common/netx"
 	"github.com/omecodes/common/utils/codec"
 	"github.com/omecodes/common/utils/log"
-	ome "github.com/omecodes/libome/v2"
+	"github.com/omecodes/libome/v2"
 	"github.com/omecodes/zebou/v2"
 	"net"
 	"path/filepath"

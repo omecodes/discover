@@ -13,7 +13,6 @@ require (
 	github.com/omecodes/common v0.0.0-20200903214349-239152c626f5
 	github.com/omecodes/libome v1.0.0 // indirect
 	github.com/omecodes/libome/v2 v2.0.0-jwt-proto-refactor
-	github.com/omecodes/zebou v0.0.0-20201107094910-b1f79ba8288b
 	github.com/omecodes/zebou/v2 v2.0.0-newproto
 	github.com/shibukawa/configdir v0.0.0-20170330084843-e180dbdc8da0 // indirect
 	github.com/spf13/cobra v1.1.1 // indirect
