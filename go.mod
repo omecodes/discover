@@ -3,19 +3,15 @@ module github.com/omecodes/discover
 go 1.13
 
 require (
-	github.com/boltdb/bolt v1.3.1 // indirect
-	github.com/go-yaml/yaml v2.1.0+incompatible // indirect
 	github.com/google/uuid v1.1.2
-	github.com/gorilla/mux v1.8.0 // indirect
-	github.com/gorilla/sessions v1.2.1 // indirect
-	github.com/iancoleman/strcase v0.1.2 // indirect
-	github.com/jinzhu/gorm v1.9.16 // indirect
-	github.com/manifoldco/promptui v0.8.0 // indirect
-	github.com/omecodes/common v0.0.0-20200903214349-239152c626f5
-	github.com/omecodes/libome v0.0.1
-	github.com/omecodes/zebou v0.0.0-20201107094910-b1f79ba8288b
-	github.com/shibukawa/configdir v0.0.0-20170330084843-e180dbdc8da0 // indirect
-	github.com/spf13/cobra v1.1.1 // indirect
-	gopkg.in/AlecAivazis/survey.v1 v1.8.8 // indirect
-	gopkg.in/mgo.v2 v2.0.0-20190816093944-a6b53ec6cb22 // indirect
+	github.com/lunixbochs/vtclean v1.0.0 // indirect
+	github.com/mattn/go-colorable v0.1.8 // indirect
+	github.com/mattn/go-sqlite3 v2.0.3+incompatible // indirect
+	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
+	github.com/omecodes/common v0.0.0-20201107101523-fe88c58889ab
+	github.com/omecodes/libome v0.0.0-20201128214815-2b3f03af9fa6
+	github.com/omecodes/zebou v0.0.0-20201128215001-171108c99072
+	github.com/pkg/errors v0.9.1 // indirect
+	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
+	gopkg.in/yaml.v2 v2.3.0 // indirect
 )

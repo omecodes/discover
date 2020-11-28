@@ -9,26 +9,24 @@ import (
 	"github.com/omecodes/common/errors"
 	"github.com/omecodes/common/utils/codec"
 	"github.com/omecodes/common/utils/log"
-	ome "github.com/omecodes/libome"
-	pb2 "github.com/omecodes/libome/proto/service"
+	"github.com/omecodes/libome"
 	"github.com/omecodes/zebou"
-	pb "github.com/omecodes/zebou/proto"
 )
 
 // MsgClient is a zebou messaging based client client
 type MsgClient struct {
-	//handlers  map[string]pb2.EventHandler
+	//handlers  map[string]ome.EventHandler
 	messenger *zebou.Client
 	store     *sync.Map
 	handlers  *sync.Map
 }
 
 // RegisterService sends register message to the discovery server
-func (m *MsgClient) RegisterService(info *pb2.Info) error {
+func (m *MsgClient) RegisterService(info *ome.ServiceInfo) error {
 
 	m.store.Store(info.Id, info)
-	m.notifyEvent(&pb2.Event{
-		Type:      pb2.EventType_Register,
+	m.notifyEvent(&ome.RegistryEvent{
+		Type:      ome.RegistryEventType_Register,
 		ServiceId: info.Id,
 		Info:      info,
 	})
@@ -39,8 +37,8 @@ func (m *MsgClient) RegisterService(info *pb2.Info) error {
 		return err
 	}
 
-	err = m.messenger.SendMsg(&pb.SyncMessage{
-		Type:    pb2.EventType_Register.String(),
+	err = m.messenger.SendMsg(&zebou.ZeMsg{
+		Type:    ome.RegistryEventType_Register.String(),
 		Id:      info.Id,
 		Encoded: encoded,
 	})
@@ -53,16 +51,16 @@ func (m *MsgClient) RegisterService(info *pb2.Info) error {
 // DeregisterService sends a deregister message to the discovery server
 func (m *MsgClient) DeregisterService(id string, nodes ...string) error {
 	var encoded []byte
-	msg := &pb.SyncMessage{
+	msg := &zebou.ZeMsg{
 		Id: id,
 	}
 
 	if len(nodes) > 0 {
 		encoded = []byte(strings.Join(nodes, "|"))
 		msg.Encoded = encoded
-		msg.Type = pb2.EventType_DeRegisterNode.String()
+		msg.Type = ome.RegistryEventType_DeRegisterNode.String()
 	} else {
-		msg.Type = pb2.EventType_DeRegister.String()
+		msg.Type = ome.RegistryEventType_DeRegister.String()
 	}
 
 	err := m.messenger.SendMsg(msg)
@@ -73,11 +71,11 @@ func (m *MsgClient) DeregisterService(id string, nodes ...string) error {
 }
 
 // GetService returns service info from local store that matches id
-func (m *MsgClient) GetService(id string) (*pb2.Info, error) {
-	var info *pb2.Info
+func (m *MsgClient) GetService(id string) (*ome.ServiceInfo, error) {
+	var info *ome.ServiceInfo
 	m.store.Range(func(key, value interface{}) bool {
 		if key == id {
-			info = value.(*pb2.Info)
+			info = value.(*ome.ServiceInfo)
 			return false
 		}
 		return true
@@ -89,7 +87,7 @@ func (m *MsgClient) GetService(id string) (*pb2.Info, error) {
 }
 
 // GetNode returns the gRPC node of the service info from local store that matches id
-func (m *MsgClient) GetNode(id string, nodeID string) (*pb2.Node, error) {
+func (m *MsgClient) GetNode(id string, nodeID string) (*ome.Node, error) {
 	info, err := m.GetService(id)
 	if err != nil {
 		return nil, err
@@ -117,7 +115,7 @@ func (m *MsgClient) Certificate(id string) ([]byte, error) {
 }
 
 // ConnectionInfo finds the service frolm local store that matches id, and return the connection info of the node that implement the given transport protocol
-func (m *MsgClient) ConnectionInfo(id string, protocol pb2.Protocol) (*pb2.ConnectionInfo, error) {
+func (m *MsgClient) ConnectionInfo(id string, protocol ome.Protocol) (*ome.ConnectionInfo, error) {
 	info, err := m.GetService(id)
 	if err != nil {
 		return nil, err
@@ -125,7 +123,7 @@ func (m *MsgClient) ConnectionInfo(id string, protocol pb2.Protocol) (*pb2.Conne
 
 	for _, n := range info.Nodes {
 		if protocol == n.Protocol {
-			ci := new(pb2.ConnectionInfo)
+			ci := new(ome.ConnectionInfo)
 			ci.Address = n.Address
 			strCert, found := info.Meta["certificate"]
 			if !found {
@@ -140,7 +138,7 @@ func (m *MsgClient) ConnectionInfo(id string, protocol pb2.Protocol) (*pb2.Conne
 }
 
 // RegisterEventHandler adds an event handler. Returns an id that is used to deregister h
-func (m *MsgClient) RegisterEventHandler(h pb2.EventHandler) string {
+func (m *MsgClient) RegisterEventHandler(h ome.EventHandler) string {
 	hid := uuid.New().String()
 	m.handlers.Store(hid, h)
 	return hid
@@ -152,10 +150,10 @@ func (m *MsgClient) DeregisterEventHandler(id string) {
 }
 
 // GetOfType gets all the service of type t
-func (m *MsgClient) GetOfType(t pb2.Type) ([]*pb2.Info, error) {
-	var result []*pb2.Info
+func (m *MsgClient) GetOfType(t ome.ServiceType) ([]*ome.ServiceInfo, error) {
+	var result []*ome.ServiceInfo
 	m.store.Range(func(key, value interface{}) bool {
-		info := value.(*pb2.Info)
+		info := value.(*ome.ServiceInfo)
 		if info.Type == t {
 			result = append(result, info)
 		}
@@ -169,10 +167,10 @@ func (m *MsgClient) GetOfType(t pb2.Type) ([]*pb2.Info, error) {
 }
 
 // FirstOfType returns the first service from local store of type t
-func (m *MsgClient) FirstOfType(t pb2.Type) (*pb2.Info, error) {
-	var info *pb2.Info
+func (m *MsgClient) FirstOfType(t ome.ServiceType) (*ome.ServiceInfo, error) {
+	var info *ome.ServiceInfo
 	m.store.Range(func(key, value interface{}) bool {
-		info = value.(*pb2.Info)
+		info = value.(*ome.ServiceInfo)
 		return info.Type != t
 	})
 	if info == nil {
@@ -195,8 +193,8 @@ func (m *MsgClient) handleInbound() {
 		}
 
 		switch msg.Type {
-		case pb2.EventType_Update.String(), pb2.EventType_Register.String():
-			info := new(pb2.Info)
+		case ome.RegistryEventType_Update.String(), ome.RegistryEventType_Register.String():
+			info := new(ome.ServiceInfo)
 			err := codec.Json.Decode(msg.Encoded, info)
 			if err != nil {
 				log.Error("failed to decode service info from message payload", log.Err(err))
@@ -206,29 +204,29 @@ func (m *MsgClient) handleInbound() {
 			m.store.Store(msg.Id, info)
 
 			log.Info(msg.Type, log.Field("service", info.Id))
-			event := &pb2.Event{
+			event := &ome.RegistryEvent{
 				ServiceId: msg.Id,
 				Info:      info,
 			}
-			event.Type = pb2.EventType(pb2.EventType_value[msg.Type])
+			event.Type = ome.RegistryEventType(ome.RegistryEventType_value[msg.Type])
 			m.notifyEvent(event)
 
-		case pb2.EventType_DeRegister.String():
+		case ome.RegistryEventType_DeRegister.String():
 			m.store.Delete(msg.Id)
 			log.Info(msg.Type, log.Field("service", msg.Id))
-			m.notifyEvent(&pb2.Event{
-				Type:      pb2.EventType_DeRegister,
+			m.notifyEvent(&ome.RegistryEvent{
+				Type:      ome.RegistryEventType_DeRegister,
 				ServiceId: msg.Id,
 			})
 
-		case pb2.EventType_DeRegisterNode.String():
+		case ome.RegistryEventType_DeRegisterNode.String():
 
 			o, ok := m.store.Load(msg.Id)
 			if ok {
-				info := o.(*pb2.Info)
+				info := o.(*ome.ServiceInfo)
 
 				nodeId := string(msg.Encoded)
-				var newNodes []*pb2.Node
+				var newNodes []*ome.Node
 				for _, node := range info.Nodes {
 					if node.Id != nodeId {
 						newNodes = append(newNodes, node)
@@ -239,8 +237,8 @@ func (m *MsgClient) handleInbound() {
 				m.store.Store(msg.Id, info)
 				log.Info(msg.Type, log.Field("nodes", string(msg.Encoded)))
 
-				m.notifyEvent(&pb2.Event{
-					Type:      pb2.EventType_DeRegisterNode,
+				m.notifyEvent(&ome.RegistryEvent{
+					Type:      ome.RegistryEventType_DeRegisterNode,
 					ServiceId: msg.Id,
 				})
 			}
@@ -251,9 +249,9 @@ func (m *MsgClient) handleInbound() {
 	}
 }
 
-func (m *MsgClient) notifyEvent(e *pb2.Event) {
+func (m *MsgClient) notifyEvent(e *ome.RegistryEvent) {
 	m.handlers.Range(func(key, value interface{}) bool {
-		h := value.(pb2.EventHandler)
+		h := value.(ome.EventHandler)
 		go h.Handle(e)
 		return true
 	})
@@ -269,9 +267,9 @@ func NewMSGClient(server string, tlsConfig *tls.Config) *MsgClient {
 	c.messenger.SetConnectionSateHandler(zebou.ConnectionStateHandlerFunc(func(active bool) {
 		if active {
 			c.store.Range(func(key, value interface{}) bool {
-				i := value.(*pb2.Info)
+				i := value.(*ome.ServiceInfo)
 				err := c.messenger.Send(
-					pb2.EventType_Register.String(),
+					ome.RegistryEventType_Register.String(),
 					i.Id,
 					i,
 				)

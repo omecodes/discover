@@ -10,9 +10,8 @@ import (
 	"github.com/omecodes/common/netx"
 	"github.com/omecodes/common/utils/codec"
 	"github.com/omecodes/common/utils/log"
-	pb2 "github.com/omecodes/libome/proto/service"
+	ome "github.com/omecodes/libome"
 	"github.com/omecodes/zebou"
-	pb "github.com/omecodes/zebou/proto"
 	"net"
 	"path/filepath"
 	"strings"
@@ -28,7 +27,7 @@ type ServerConfig struct {
 
 type msgServer struct {
 	sync.Mutex
-	handlers map[string]pb2.EventHandler
+	handlers map[string]ome.EventHandler
 	listener net.Listener
 	hub      *zebou.Hub
 	store    mapping.DoubleMap
@@ -48,7 +47,7 @@ func (s *msgServer) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
 	}
 
 	for c.HasNext() {
-		var info pb2.Info
+		var info ome.ServiceInfo
 		err = c.Next(&info)
 		if err != nil {
 			log.Error("failed to parse service info", log.Err(err))
@@ -60,8 +59,8 @@ func (s *msgServer) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
 			return
 		}
 
-		err = zebou.Send(ctx, &pb.SyncMessage{
-			Type:    pb2.EventType_Register.String(),
+		err = zebou.Send(ctx, &zebou.ZeMsg{
+			Type:    ome.RegistryEventType_Register.String(),
 			Id:      info.Id,
 			Encoded: encoded,
 		})
@@ -92,15 +91,15 @@ func (s *msgServer) ClientQuit(ctx context.Context, peer *zebou.PeerInfo) {
 			return
 		}
 
-		s.hub.Broadcast(ctx, &pb.SyncMessage{
-			Type:    pb2.EventType_DeRegister.String(),
+		s.hub.Broadcast(ctx, &zebou.ZeMsg{
+			Type:    ome.RegistryEventType_DeRegister.String(),
 			Id:      info.Id,
 			Encoded: encoded,
 		})
 	}
 }
 
-func (s *msgServer) getFromClient(id string) ([]*pb2.Info, error) {
+func (s *msgServer) getFromClient(id string) ([]*ome.ServiceInfo, error) {
 	c, err := s.store.GetForFirst(id)
 	if err != nil {
 		log.Error("failed to get registered nodes", log.Field("conn_id", id))
@@ -108,9 +107,9 @@ func (s *msgServer) getFromClient(id string) ([]*pb2.Info, error) {
 	}
 	defer c.Close()
 
-	var result []*pb2.Info
+	var result []*ome.ServiceInfo
 	for c.HasNext() {
-		var info pb2.Info
+		var info ome.ServiceInfo
 		_, err := c.Next(&info)
 		if err != nil {
 			log.Error("failed to parse service info", log.Err(err))
@@ -121,13 +120,13 @@ func (s *msgServer) getFromClient(id string) ([]*pb2.Info, error) {
 	return result, nil
 }
 
-func (s *msgServer) OnMessage(ctx context.Context, msg *pb.SyncMessage) {
+func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 	peer := zebou.Peer(ctx)
 	go s.hub.Broadcast(ctx, msg)
 
 	switch msg.Type {
-	case pb2.EventType_Update.String(), pb2.EventType_Register.String():
-		info := new(pb2.Info)
+	case ome.RegistryEventType_Update.String(), ome.RegistryEventType_Register.String():
+		info := new(ome.ServiceInfo)
 		err := codec.Json.Decode(msg.Encoded, info)
 		if err != nil {
 			log.Error("failed to decode service info from message payload", log.Err(err))
@@ -142,14 +141,14 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *pb.SyncMessage) {
 
 		log.Info(msg.Type, log.Field("service", info.Id))
 
-		event := &pb2.Event{
+		event := &ome.RegistryEvent{
 			ServiceId: msg.Id,
 			Info:      info,
 		}
-		event.Type = pb2.EventType(pb2.EventType_value[msg.Type])
+		event.Type = ome.RegistryEventType(ome.RegistryEventType_value[msg.Type])
 		s.notifyEvent(event)
 
-	case pb2.EventType_DeRegister.String():
+	case ome.RegistryEventType_DeRegister.String():
 		err := s.store.Delete(peer.ID, msg.Id)
 		if err != nil {
 			log.Error("could not delete service info", log.Err(err), log.Field("service", msg.Id))
@@ -157,13 +156,13 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *pb.SyncMessage) {
 		}
 
 		log.Info(msg.Type, log.Field("service", msg.Id))
-		s.notifyEvent(&pb2.Event{
-			Type:      pb2.EventType_DeRegister,
+		s.notifyEvent(&ome.RegistryEvent{
+			Type:      ome.RegistryEventType_DeRegister,
 			ServiceId: msg.Id,
 		})
 
-	case pb2.EventType_DeRegisterNode.String():
-		var info pb2.Info
+	case ome.RegistryEventType_DeRegisterNode.String():
+		var info ome.ServiceInfo
 
 		err := s.store.Get(peer.ID, msg.Id, &info)
 		if err != nil {
@@ -172,7 +171,7 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *pb.SyncMessage) {
 		}
 
 		nodeId := string(msg.Encoded)
-		var newNodes []*pb2.Node
+		var newNodes []*ome.Node
 		for _, node := range info.Nodes {
 			if node.Id != nodeId {
 				newNodes = append(newNodes, node)
@@ -188,8 +187,8 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *pb.SyncMessage) {
 
 		log.Info(msg.Type, log.Field("nodes", string(msg.Encoded)))
 
-		s.notifyEvent(&pb2.Event{
-			Type:      pb2.EventType_DeRegisterNode,
+		s.notifyEvent(&ome.RegistryEvent{
+			Type:      ome.RegistryEventType_DeRegisterNode,
 			ServiceId: msg.Id,
 		})
 
@@ -198,7 +197,7 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *pb.SyncMessage) {
 	}
 }
 
-func (s *msgServer) RegisterService(i *pb2.Info) error {
+func (s *msgServer) RegisterService(i *ome.ServiceInfo) error {
 	err := s.store.Set("ome", i.Id, i)
 	if err != nil {
 		return err
@@ -208,15 +207,15 @@ func (s *msgServer) RegisterService(i *pb2.Info) error {
 	if err != nil {
 		return err
 	}
-	msg := &pb.SyncMessage{
-		Type:    pb2.EventType_Register.String(),
+	msg := &zebou.ZeMsg{
+		Type:    ome.RegistryEventType_Register.String(),
 		Id:      i.Id,
 		Encoded: encoded,
 	}
 	s.hub.Broadcast(context.Background(), msg)
 
-	s.notifyEvent(&pb2.Event{
-		Type:      pb2.EventType_Register,
+	s.notifyEvent(&ome.RegistryEvent{
+		Type:      ome.RegistryEventType_Register,
 		ServiceId: i.Id,
 		Info:      i,
 	})
@@ -224,18 +223,18 @@ func (s *msgServer) RegisterService(i *pb2.Info) error {
 }
 
 func (s *msgServer) DeregisterService(id string, nodes ...string) error {
-	msg := &pb.SyncMessage{
+	msg := &zebou.ZeMsg{
 		Id: id,
 	}
 
 	if len(nodes) > 0 {
-		var info pb2.Info
+		var info ome.ServiceInfo
 		err := s.store.Get("ome", id, &info)
 		if err != nil {
 			return err
 		}
 
-		var newNodes []*pb2.Node
+		var newNodes []*ome.Node
 		for _, node := range info.Nodes {
 			deleted := true
 			for _, nodeId := range nodes {
@@ -257,10 +256,10 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 
 		encoded := []byte(strings.Join(nodes, "|"))
 		msg.Encoded = encoded
-		msg.Type = pb2.EventType_DeRegisterNode.String()
+		msg.Type = ome.RegistryEventType_DeRegisterNode.String()
 		s.hub.Broadcast(context.Background(), msg)
-		ev := &pb2.Event{
-			Type:      pb2.EventType_DeRegisterNode,
+		ev := &ome.RegistryEvent{
+			Type:      ome.RegistryEventType_DeRegisterNode,
 			ServiceId: fmt.Sprintf("%s:%s", id, encoded),
 		}
 		s.notifyEvent(ev)
@@ -271,10 +270,10 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 			return err
 		}
 
-		msg.Type = pb2.EventType_DeRegister.String()
+		msg.Type = ome.RegistryEventType_DeRegister.String()
 		s.hub.Broadcast(context.Background(), msg)
-		ev := &pb2.Event{
-			Type:      pb2.EventType_DeRegister,
+		ev := &ome.RegistryEvent{
+			Type:      ome.RegistryEventType_DeRegister,
 			ServiceId: id,
 		}
 		s.notifyEvent(ev)
@@ -282,13 +281,13 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 	return nil
 }
 
-func (s *msgServer) GetService(id string) (*pb2.Info, error) {
-	var info pb2.Info
+func (s *msgServer) GetService(id string) (*ome.ServiceInfo, error) {
+	var info ome.ServiceInfo
 	err := s.store.Get("ome", id, &info)
 	return &info, err
 }
 
-func (s *msgServer) GetNode(id string, nodeName string) (*pb2.Node, error) {
+func (s *msgServer) GetNode(id string, nodeName string) (*ome.Node, error) {
 	info, err := s.GetService(id)
 	if err != nil {
 		return nil, err
@@ -316,7 +315,7 @@ func (s *msgServer) Certificate(id string) ([]byte, error) {
 	return []byte(strCert), nil
 }
 
-func (s *msgServer) ConnectionInfo(id string, protocol pb2.Protocol) (*pb2.ConnectionInfo, error) {
+func (s *msgServer) ConnectionInfo(id string, protocol ome.Protocol) (*ome.ConnectionInfo, error) {
 	info, err := s.GetService(id)
 	if err != nil {
 		return nil, err
@@ -324,7 +323,7 @@ func (s *msgServer) ConnectionInfo(id string, protocol pb2.Protocol) (*pb2.Conne
 
 	for _, n := range info.Nodes {
 		if protocol == n.Protocol {
-			ci := new(pb2.ConnectionInfo)
+			ci := new(ome.ConnectionInfo)
 			ci.Address = n.Address
 			strCert, found := info.Meta["certificate"]
 			if !found {
@@ -338,7 +337,7 @@ func (s *msgServer) ConnectionInfo(id string, protocol pb2.Protocol) (*pb2.Conne
 	return nil, errors.NotFound
 }
 
-func (s *msgServer) RegisterEventHandler(h pb2.EventHandler) string {
+func (s *msgServer) RegisterEventHandler(h ome.EventHandler) string {
 	s.Lock()
 	defer s.Unlock()
 	hid := uuid.New().String()
@@ -352,8 +351,8 @@ func (s *msgServer) DeregisterEventHandler(hid string) {
 	delete(s.handlers, hid)
 }
 
-func (s *msgServer) GetOfType(t pb2.Type) ([]*pb2.Info, error) {
-	var msgList []*pb2.Info
+func (s *msgServer) GetOfType(t ome.ServiceType) ([]*ome.ServiceInfo, error) {
+	var msgList []*ome.ServiceInfo
 	c, err := s.store.GetAll()
 	if err != nil {
 		return nil, err
@@ -361,7 +360,7 @@ func (s *msgServer) GetOfType(t pb2.Type) ([]*pb2.Info, error) {
 	defer c.Close()
 
 	for c.HasNext() {
-		var info pb2.Info
+		var info ome.ServiceInfo
 		err := c.Next(&info)
 		if err != nil {
 			return msgList, err
@@ -374,7 +373,7 @@ func (s *msgServer) GetOfType(t pb2.Type) ([]*pb2.Info, error) {
 	return msgList, nil
 }
 
-func (s *msgServer) FirstOfType(t pb2.Type) (*pb2.Info, error) {
+func (s *msgServer) FirstOfType(t ome.ServiceType) (*ome.ServiceInfo, error) {
 	c, err := s.store.GetAll()
 	if err != nil {
 		return nil, err
@@ -382,7 +381,7 @@ func (s *msgServer) FirstOfType(t pb2.Type) (*pb2.Info, error) {
 	defer c.Close()
 
 	for c.HasNext() {
-		var info pb2.Info
+		var info ome.ServiceInfo
 		err := c.Next(&info)
 		if err != nil {
 			return nil, err
@@ -400,7 +399,7 @@ func (s *msgServer) Stop() error {
 	return s.listener.Close()
 }
 
-func (s *msgServer) notifyEvent(e *pb2.Event) {
+func (s *msgServer) notifyEvent(e *ome.RegistryEvent) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -409,7 +408,7 @@ func (s *msgServer) notifyEvent(e *pb2.Event) {
 	}
 }
 
-func Serve(configs *ServerConfig) (pb2.Registry, error) {
+func Serve(configs *ServerConfig) (ome.Registry, error) {
 	s := new(msgServer)
 	var opts []netx.ListenOption
 
@@ -447,7 +446,7 @@ func Serve(configs *ServerConfig) (pb2.Registry, error) {
 		return nil, err
 	}
 
-	s.handlers = map[string]pb2.EventHandler{}
+	s.handlers = map[string]ome.EventHandler{}
 
 	return s, nil
 }
