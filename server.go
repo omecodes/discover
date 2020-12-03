@@ -3,14 +3,14 @@ package discover
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
-	"github.com/omecodes/common/dao/mapping"
+	"github.com/omecodes/bome"
 	"github.com/omecodes/common/errors"
 	"github.com/omecodes/common/netx"
-	"github.com/omecodes/common/utils/codec"
 	"github.com/omecodes/common/utils/log"
-	ome "github.com/omecodes/libome"
+	"github.com/omecodes/libome"
 	"github.com/omecodes/zebou"
 	"net"
 	"path/filepath"
@@ -19,6 +19,7 @@ import (
 )
 
 type ServerConfig struct {
+	Name         string
 	StoreDir     string
 	BindAddress  string
 	CertFilename string
@@ -30,7 +31,8 @@ type msgServer struct {
 	handlers map[string]ome.EventHandler
 	listener net.Listener
 	hub      *zebou.Hub
-	store    mapping.DoubleMap
+	store    *bome.DoubleMap
+	name     string
 }
 
 func (s *msgServer) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
@@ -46,23 +48,26 @@ func (s *msgServer) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
 		return
 	}
 
+	defer func() {
+		if err := c.Close(); err != nil {
+			log.Error("failed to close cursor", log.Err(err))
+		}
+	}()
+
 	for c.HasNext() {
 		var info ome.ServiceInfo
-		err = c.Next(&info)
+		o, err := c.Next()
 		if err != nil {
 			log.Error("failed to parse service info", log.Err(err))
 			return
 		}
-		encoded, err := codec.Json.Encode(info)
-		if err != nil {
-			log.Error("failed to json encode service info", log.Err(err))
-			return
-		}
+
+		entry := o.(*bome.DoubleMapEntry)
 
 		err = zebou.Send(ctx, &zebou.ZeMsg{
 			Type:    ome.RegistryEventType_Register.String(),
 			Id:      info.Id,
-			Encoded: encoded,
+			Encoded: []byte(entry.Value),
 		})
 		if err != nil {
 			log.Error("could not send message", log.Err(err))
@@ -76,6 +81,7 @@ func (s *msgServer) ClientQuit(ctx context.Context, peer *zebou.PeerInfo) {
 	services, err := s.getFromClient(peer.ID)
 	if err != nil {
 		log.Error("could not get client registered services", log.Err(err))
+		return
 	}
 
 	err = s.store.DeleteAllMatchingFirstKey(peer.ID)
@@ -85,7 +91,7 @@ func (s *msgServer) ClientQuit(ctx context.Context, peer *zebou.PeerInfo) {
 	}
 
 	for _, info := range services {
-		encoded, err := codec.Json.Encode(info)
+		encoded, err := json.Marshal(info)
 		if err != nil {
 			log.Error("failed to encode service info", log.Err(err))
 			return
@@ -105,14 +111,25 @@ func (s *msgServer) getFromClient(id string) ([]*ome.ServiceInfo, error) {
 		log.Error("failed to get registered nodes", log.Field("conn_id", id))
 		return nil, err
 	}
-	defer c.Close()
+
+	defer func() {
+		if err := c.Close(); err != nil {
+			log.Error("failed to close cursor", log.Err(err))
+		}
+	}()
 
 	var result []*ome.ServiceInfo
 	for c.HasNext() {
-		var info ome.ServiceInfo
-		_, err := c.Next(&info)
+		o, err := c.Next()
 		if err != nil {
-			log.Error("failed to parse service info", log.Err(err))
+			return nil, err
+		}
+
+		entry := o.(bome.MapEntry)
+
+		var info ome.ServiceInfo
+		err = json.Unmarshal([]byte(entry.Value), &info)
+		if err != nil {
 			return nil, err
 		}
 		result = append(result, &info)
@@ -126,21 +143,24 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 
 	switch msg.Type {
 	case ome.RegistryEventType_Update.String(), ome.RegistryEventType_Register.String():
-		info := new(ome.ServiceInfo)
-		err := codec.Json.Decode(msg.Encoded, info)
-		if err != nil {
-			log.Error("failed to decode service info from message payload", log.Err(err))
-			return
+		entry := &bome.DoubleMapEntry{
+			FirstKey:  peer.ID,
+			SecondKey: msg.Id,
+			Value:     string(msg.Encoded),
 		}
-
-		err = s.store.Set(peer.ID, msg.Id, info)
+		err := s.store.Save(entry)
 		if err != nil {
 			log.Error("failed to store service info", log.Err(err))
 			return
 		}
+		log.Info(msg.Type, log.Field("service", msg.Id))
 
-		log.Info(msg.Type, log.Field("service", info.Id))
-
+		info := new(ome.ServiceInfo)
+		err = json.Unmarshal(msg.Encoded, &info)
+		if err != nil {
+			log.Error("failed to decode service info", log.Err(err))
+			return
+		}
 		event := &ome.RegistryEvent{
 			ServiceId: msg.Id,
 			Info:      info,
@@ -162,11 +182,17 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 		})
 
 	case ome.RegistryEventType_DeRegisterNode.String():
-		var info ome.ServiceInfo
 
-		err := s.store.Get(peer.ID, msg.Id, &info)
+		value, err := s.store.Get(peer.ID, msg.Id)
 		if err != nil {
 			log.Error("failed to read service info", log.Err(err), log.Field("service", msg.Id))
+			return
+		}
+
+		var info ome.ServiceInfo
+		err = json.Unmarshal([]byte(value), &info)
+		if err != nil {
+			log.Error("failed to decode service info", log.Err(err))
 			return
 		}
 
@@ -177,9 +203,20 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 				newNodes = append(newNodes, node)
 			}
 		}
-
 		info.Nodes = newNodes
-		err = s.store.Set(peer.ID, msg.Id, info)
+
+		newEncoded, err := json.Marshal(&info)
+		if err != nil {
+			log.Error("failed to encode service info", log.Err(err))
+			return
+		}
+
+		entry := &bome.DoubleMapEntry{
+			FirstKey:  peer.ID,
+			SecondKey: msg.Id,
+			Value:     string(newEncoded),
+		}
+		err = s.store.Save(entry)
 		if err != nil {
 			log.Error("failed to update service info", log.Err(err), log.Field("service", msg.Id))
 			return
@@ -190,6 +227,7 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 		s.notifyEvent(&ome.RegistryEvent{
 			Type:      ome.RegistryEventType_DeRegisterNode,
 			ServiceId: msg.Id,
+			Info:      &info,
 		})
 
 	default:
@@ -198,22 +236,28 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 }
 
 func (s *msgServer) RegisterService(i *ome.ServiceInfo) error {
-	err := s.store.Set("ome", i.Id, i)
+	encoded, err := json.Marshal(i)
+	if err != nil {
+		log.Error("failed to json encode i")
+		return err
+	}
+
+	err = s.store.Save(&bome.DoubleMapEntry{
+		FirstKey:  s.name,
+		SecondKey: i.Id,
+		Value:     string(encoded),
+	})
 	if err != nil {
 		return err
 	}
 
-	encoded, err := codec.Json.Encode(i)
-	if err != nil {
-		return err
-	}
 	msg := &zebou.ZeMsg{
 		Type:    ome.RegistryEventType_Register.String(),
 		Id:      i.Id,
 		Encoded: encoded,
 	}
-	s.hub.Broadcast(context.Background(), msg)
 
+	s.hub.Broadcast(context.Background(), msg)
 	s.notifyEvent(&ome.RegistryEvent{
 		Type:      ome.RegistryEventType_Register,
 		ServiceId: i.Id,
@@ -229,7 +273,12 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 
 	if len(nodes) > 0 {
 		var info ome.ServiceInfo
-		err := s.store.Get("ome", id, &info)
+		encoded, err := s.store.Get(s.name, id)
+		if err != nil {
+			return err
+		}
+
+		err = json.Unmarshal([]byte(encoded), &info)
 		if err != nil {
 			return err
 		}
@@ -248,14 +297,24 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 				newNodes = append(newNodes, node)
 			}
 		}
+
 		info.Nodes = newNodes
-		err = s.store.Set("ome", msg.Id, info)
+
+		newEncodedBytes, err := json.Marshal(&info)
 		if err != nil {
 			return err
 		}
 
-		encoded := []byte(strings.Join(nodes, "|"))
-		msg.Encoded = encoded
+		err = s.store.Save(&bome.DoubleMapEntry{
+			FirstKey:  s.name,
+			SecondKey: id,
+			Value:     string(newEncodedBytes),
+		})
+		if err != nil {
+			return err
+		}
+
+		msg.Encoded = []byte(strings.Join(nodes, "|"))
 		msg.Type = ome.RegistryEventType_DeRegisterNode.String()
 		s.hub.Broadcast(context.Background(), msg)
 		ev := &ome.RegistryEvent{
@@ -265,7 +324,7 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 		s.notifyEvent(ev)
 
 	} else {
-		err := s.store.Delete("ome", id)
+		err := s.store.Delete(s.name, id)
 		if err != nil {
 			return err
 		}
@@ -283,7 +342,12 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 
 func (s *msgServer) GetService(id string) (*ome.ServiceInfo, error) {
 	var info ome.ServiceInfo
-	err := s.store.Get("ome", id, &info)
+	encoded, err := s.store.Get(s.name, id)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal([]byte(encoded), &info)
 	return &info, err
 }
 
@@ -352,25 +416,37 @@ func (s *msgServer) DeregisterEventHandler(hid string) {
 }
 
 func (s *msgServer) GetOfType(t ome.ServiceType) ([]*ome.ServiceInfo, error) {
-	var msgList []*ome.ServiceInfo
+	var infoList []*ome.ServiceInfo
 	c, err := s.store.GetAll()
 	if err != nil {
 		return nil, err
 	}
-	defer c.Close()
+
+	defer func() {
+		if err := c.Close(); err != nil {
+			log.Error("failed to close cursor", log.Err(err))
+		}
+	}()
 
 	for c.HasNext() {
-		var info ome.ServiceInfo
-		err := c.Next(&info)
+		o, err := c.Next()
 		if err != nil {
-			return msgList, err
+			return infoList, err
+		}
+
+		entry := o.(*bome.DoubleMapEntry)
+
+		var info ome.ServiceInfo
+		err = json.Unmarshal([]byte(entry.Value), &info)
+		if err != nil {
+			return infoList, err
 		}
 
 		if info.Type == t {
-			msgList = append(msgList, nil)
+			infoList = append(infoList, nil)
 		}
 	}
-	return msgList, nil
+	return infoList, nil
 }
 
 func (s *msgServer) FirstOfType(t ome.ServiceType) (*ome.ServiceInfo, error) {
@@ -378,11 +454,22 @@ func (s *msgServer) FirstOfType(t ome.ServiceType) (*ome.ServiceInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer c.Close()
+	defer func() {
+		if err := c.Close(); err != nil {
+			log.Error("failed to close cursor", log.Err(err))
+		}
+	}()
 
 	for c.HasNext() {
+		o, err := c.Next()
+		if err != nil {
+			return nil, err
+		}
+
+		entry := o.(*bome.DoubleMapEntry)
+
 		var info ome.ServiceInfo
-		err := c.Next(&info)
+		err = json.Unmarshal([]byte(entry.Value), &info)
 		if err != nil {
 			return nil, err
 		}
@@ -416,6 +503,7 @@ func Serve(configs *ServerConfig) (ome.Registry, error) {
 		opts = append(opts, netx.Secure(configs.CertFilename, configs.KeyFilename))
 	}
 
+	s.name = configs.Name
 	var err error
 	s.listener, err = netx.Listen(configs.BindAddress, opts...)
 	if err != nil {
@@ -430,7 +518,7 @@ func Serve(configs *ServerConfig) (ome.Registry, error) {
 		return nil, err
 	}
 
-	s.store, err = mapping.NewSQL("sqlite3", db, "reg", codec.Json)
+	s.store, err = bome.NewDoubleMap(db, bome.SQLite3, "registry")
 	if err != nil {
 		return nil, err
 	}
