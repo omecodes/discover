@@ -77,6 +77,7 @@ func (s *msgServer) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
 			log.Error("could not send message", log.Err(err))
 			return
 		}
+		log.Info("registry • sent register event to new connected client", log.Field("type", info.Type), log.Field("id", info.Id))
 	}
 
 	if count == 0 {

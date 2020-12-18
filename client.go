@@ -191,7 +191,7 @@ func (m *MsgClient) handleInbound() {
 			continue
 		}
 
-		log.Info("*new message", log.Field("type", msg.Type), log.Field("id", msg.Id))
+		log.Info("registry • received event", log.Field("type", msg.Type))
 
 		switch msg.Type {
 		case ome.RegistryEventType_Update.String(), ome.RegistryEventType_Register.String():
@@ -202,15 +202,18 @@ func (m *MsgClient) handleInbound() {
 				return
 			}
 
-			m.store.Store(msg.Id, info)
+			log.Info("registry • register service event", log.Field("id", info.Id))
+			m.store.Store(info.Id, info)
+
 			event := &ome.RegistryEvent{
-				ServiceId: msg.Id,
+				ServiceId: info.Id,
 				Info:      info,
 			}
 			event.Type = ome.RegistryEventType(ome.RegistryEventType_value[msg.Type])
 			m.notifyEvent(event)
 
 		case ome.RegistryEventType_DeRegister.String():
+			log.Info("registry • delete service event", log.Field("id", msg.Id))
 			m.store.Delete(msg.Id)
 			m.notifyEvent(&ome.RegistryEvent{
 				Type:      ome.RegistryEventType_DeRegister,
@@ -218,26 +221,26 @@ func (m *MsgClient) handleInbound() {
 			})
 
 		case ome.RegistryEventType_DeRegisterNode.String():
-
 			o, ok := m.store.Load(msg.Id)
 			if ok {
 				info := o.(*ome.ServiceInfo)
+				log.Info("registry • register nodes event", log.Field("for", info.Id))
 
 				nodeId := string(msg.Encoded)
 				var newNodes []*ome.Node
 				for _, node := range info.Nodes {
 					if node.Id != nodeId {
+						log.Info("registry • new node", log.Field("node", nodeId))
 						newNodes = append(newNodes, node)
 					}
 				}
 
 				info.Nodes = newNodes
-				m.store.Store(msg.Id, info)
-				log.Info(msg.Type, log.Field("nodes", string(msg.Encoded)))
+				m.store.Store(info.Id, info)
 
 				m.notifyEvent(&ome.RegistryEvent{
 					Type:      ome.RegistryEventType_DeRegisterNode,
-					ServiceId: msg.Id,
+					ServiceId: info.Id,
 				})
 			}
 
