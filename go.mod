@@ -7,7 +7,7 @@ require (
 	github.com/omecodes/bome v0.0.0-20201212145154-cc0621995609
 	github.com/omecodes/common v0.0.0-20201205124409-0a391e4b4c08
 	github.com/omecodes/libome v0.0.0-20201202084519-7cffbc7a04c8
-	github.com/omecodes/zebou v0.0.0-20201218205955-ad5a8f367fff
+	github.com/omecodes/zebou v0.0.0-20201218212227-aef4585126e1
 	github.com/pkg/errors v0.9.1 // indirect
 	golang.org/x/crypto v0.0.0-20201217014255-9d1352758620 // indirect
 	golang.org/x/net v0.0.0-20201216054612-986b41b23924 // indirect
