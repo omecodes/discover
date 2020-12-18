@@ -37,21 +37,21 @@ type msgServer struct {
 
 func (s *msgServer) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
 	if peer != nil {
-		log.Info("new client connected", log.Field("conn_id", peer.ID), log.Field("addr", peer.Address))
+		log.Info("registry server • new client connected", log.Field("conn_id", peer.ID), log.Field("addr", peer.Address))
 	} else {
-		log.Info("new client connected")
+		log.Info("registry server • new client connected")
 	}
 
 
 	c, err := s.store.GetAll()
 	if err != nil {
-		log.Error("could not load services list from store", log.Err(err))
+		log.Error("registry server • could not load services list from store", log.Err(err))
 		return
 	}
 
 	defer func() {
 		if err := c.Close(); err != nil {
-			log.Error("failed to close cursor", log.Err(err))
+			log.Error("registry server • failed to close cursor", log.Err(err))
 		}
 	}()
 
@@ -62,11 +62,15 @@ func (s *msgServer) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
 		var info ome.ServiceInfo
 		o, err := c.Next()
 		if err != nil {
-			log.Error("failed to parse service info", log.Err(err))
+			log.Error("registry server • failed to parse service info", log.Err(err))
 			return
 		}
 
 		entry := o.(*bome.DoubleMapEntry)
+		err = json.Unmarshal([]byte(entry.Value), &info)
+		if err != nil {
+			log.Error("registry server • could not load service info from store", log.Err(err))
+		}
 
 		err = zebou.Send(ctx, &zebou.ZeMsg{
 			Type:    ome.RegistryEventType_Register.String(),
@@ -74,37 +78,37 @@ func (s *msgServer) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
 			Encoded: []byte(entry.Value),
 		})
 		if err != nil {
-			log.Error("could not send message", log.Err(err))
+			log.Error("registry server • could not send message", log.Err(err))
 			return
 		}
-		log.Info("registry • sent register event to new connected client", log.Field("type", info.Type), log.Field("id", info.Id))
+		log.Info("registry server • sent register event to new connected client", log.Field("type", info.Type), log.Field("id", info.Id))
 	}
 
 	if count == 0 {
-		log.Info("No info sent to client")
+		log.Info("registry server • no info sent to client")
 	} else {
-		log.Info("sent all service info to client", log.Field("count", count))
+		log.Info("registry server • sent all service info to client", log.Field("count", count))
 	}
 }
 
 func (s *msgServer) ClientQuit(ctx context.Context, peer *zebou.PeerInfo) {
-	log.Info("client disconnected", log.Field("conn_id", peer.ID), log.Field("addr", peer.Address))
+	log.Info("registry server • client disconnected", log.Field("conn_id", peer.ID), log.Field("addr", peer.Address))
 	services, err := s.getFromClient(peer.ID)
 	if err != nil {
-		log.Error("could not get client registered services", log.Err(err))
+		log.Error("registry server • could not get client registered services", log.Err(err))
 		return
 	}
 
 	err = s.store.DeleteAllMatchingFirstKey(peer.ID)
 	if err != nil {
-		log.Error("could not delete client registered services", log.Err(err))
+		log.Error("registry server • could not delete client registered services", log.Err(err))
 		return
 	}
 
 	for _, info := range services {
 		encoded, err := json.Marshal(info)
 		if err != nil {
-			log.Error("failed to encode service info", log.Err(err))
+			log.Error("registry server • failed to encode service info", log.Err(err))
 			return
 		}
 
@@ -119,13 +123,13 @@ func (s *msgServer) ClientQuit(ctx context.Context, peer *zebou.PeerInfo) {
 func (s *msgServer) getFromClient(id string) ([]*ome.ServiceInfo, error) {
 	c, err := s.store.GetForFirst(id)
 	if err != nil {
-		log.Error("failed to get registered nodes", log.Field("conn_id", id))
+		log.Error("registry server • failed to get registered nodes", log.Field("conn_id", id))
 		return nil, err
 	}
 
 	defer func() {
 		if err := c.Close(); err != nil {
-			log.Error("failed to close cursor", log.Err(err))
+			log.Error("registry server • failed to close cursor", log.Err(err))
 		}
 	}()
 
@@ -161,15 +165,15 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 		}
 		err := s.store.Save(entry)
 		if err != nil {
-			log.Error("failed to store service info", log.Err(err))
+			log.Error("registry server • failed to store service info", log.Err(err))
 			return
 		}
-		log.Info(msg.Type, log.Field("service", msg.Id))
+		log.Info("registry server • " + msg.Type, log.Field("service", msg.Id))
 
 		info := new(ome.ServiceInfo)
 		err = json.Unmarshal(msg.Encoded, &info)
 		if err != nil {
-			log.Error("failed to decode service info", log.Err(err))
+			log.Error("registry server • failed to decode service info", log.Err(err))
 			return
 		}
 		event := &ome.RegistryEvent{
@@ -182,11 +186,11 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 	case ome.RegistryEventType_DeRegister.String():
 		err := s.store.Delete(peer.ID, msg.Id)
 		if err != nil {
-			log.Error("could not delete service info", log.Err(err), log.Field("service", msg.Id))
+			log.Error("registry server • could not delete service info", log.Err(err), log.Field("service", msg.Id))
 			return
 		}
 
-		log.Info(msg.Type, log.Field("service", msg.Id))
+		log.Info("registry server • " + msg.Type, log.Field("service", msg.Id))
 		s.notifyEvent(&ome.RegistryEvent{
 			Type:      ome.RegistryEventType_DeRegister,
 			ServiceId: msg.Id,
@@ -196,14 +200,14 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 
 		value, err := s.store.Get(peer.ID, msg.Id)
 		if err != nil {
-			log.Error("failed to read service info", log.Err(err), log.Field("service", msg.Id))
+			log.Error("registry server • failed to read service info", log.Err(err), log.Field("service", msg.Id))
 			return
 		}
 
 		var info ome.ServiceInfo
 		err = json.Unmarshal([]byte(value), &info)
 		if err != nil {
-			log.Error("failed to decode service info", log.Err(err))
+			log.Error("registry server • failed to decode service info", log.Err(err))
 			return
 		}
 
@@ -218,7 +222,7 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 
 		newEncoded, err := json.Marshal(&info)
 		if err != nil {
-			log.Error("failed to encode service info", log.Err(err))
+			log.Error("registry server • failed to encode service info", log.Err(err))
 			return
 		}
 
@@ -229,7 +233,7 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 		}
 		err = s.store.Save(entry)
 		if err != nil {
-			log.Error("failed to update service info", log.Err(err), log.Field("service", msg.Id))
+			log.Error("registry server • failed to update service info", log.Err(err), log.Field("service", msg.Id))
 			return
 		}
 
@@ -242,20 +246,20 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 		})
 
 	default:
-		log.Info("received unsupported msg type", log.Field("type", msg.Type))
+		log.Info("registry server • received unsupported msg type", log.Field("type", msg.Type))
 	}
 }
 
-func (s *msgServer) RegisterService(i *ome.ServiceInfo) error {
-	encoded, err := json.Marshal(i)
+func (s *msgServer) RegisterService(info *ome.ServiceInfo) error {
+	encoded, err := json.Marshal(info)
 	if err != nil {
-		log.Error("failed to json encode i")
+		log.Error("registry server • failed to json encode info")
 		return err
 	}
 
 	err = s.store.Save(&bome.DoubleMapEntry{
 		FirstKey:  s.name,
-		SecondKey: i.Id,
+		SecondKey: info.Id,
 		Value:     string(encoded),
 	})
 	if err != nil {
@@ -264,15 +268,15 @@ func (s *msgServer) RegisterService(i *ome.ServiceInfo) error {
 
 	msg := &zebou.ZeMsg{
 		Type:    ome.RegistryEventType_Register.String(),
-		Id:      i.Id,
+		Id:      info.Id,
 		Encoded: encoded,
 	}
 
 	s.hub.Broadcast(context.Background(), msg)
 	s.notifyEvent(&ome.RegistryEvent{
 		Type:      ome.RegistryEventType_Register,
-		ServiceId: i.Id,
-		Info:      i,
+		ServiceId: info.Id,
+		Info:      info,
 	})
 	return nil
 }
@@ -437,7 +441,7 @@ func (s *msgServer) GetOfType(t ome.ServiceType) ([]*ome.ServiceInfo, error) {
 
 	defer func() {
 		if err := c.Close(); err != nil {
-			log.Error("failed to close cursor", log.Err(err))
+			log.Error("registry server • failed to close cursor", log.Err(err))
 		}
 	}()
 
