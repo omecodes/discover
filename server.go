@@ -42,7 +42,6 @@ func (s *msgServer) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
 		log.Info("registry server • new client connected")
 	}
 
-
 	c, err := s.store.GetAll()
 	if err != nil {
 		log.Error("registry server • could not load services list from store", log.Err(err))
@@ -168,7 +167,6 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 			log.Error("registry server • failed to store service info", log.Err(err))
 			return
 		}
-		log.Info("registry server • " + msg.Type, log.Field("service", msg.Id))
 
 		info := new(ome.ServiceInfo)
 		err = json.Unmarshal(msg.Encoded, &info)
@@ -176,11 +174,18 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 			log.Error("registry server • failed to decode service info", log.Err(err))
 			return
 		}
+
+		log.Info("registry server • register service", log.Field("id", info.Id))
+
 		event := &ome.RegistryEvent{
-			ServiceId: msg.Id,
+			ServiceId: info.Id,
 			Info:      info,
 		}
-		event.Type = ome.RegistryEventType(ome.RegistryEventType_value[msg.Type])
+		if msg.Type == ome.RegistryEventType_Register.String() {
+			event.Type = ome.RegistryEventType_Register
+		} else {
+			event.Type = ome.RegistryEventType_Update
+		}
 		s.notifyEvent(event)
 
 	case ome.RegistryEventType_DeRegister.String():
@@ -190,7 +195,7 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 			return
 		}
 
-		log.Info("registry server • " + msg.Type, log.Field("service", msg.Id))
+		log.Info("registry server • "+msg.Type, log.Field("service", msg.Id))
 		s.notifyEvent(&ome.RegistryEvent{
 			Type:      ome.RegistryEventType_DeRegister,
 			ServiceId: msg.Id,
@@ -240,8 +245,8 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 		log.Info(msg.Type, log.Field("nodes", string(msg.Encoded)))
 
 		s.notifyEvent(&ome.RegistryEvent{
-			Type:      ome.RegistryEventType_DeRegisterNode,
-			ServiceId: msg.Id,
+			Type:      ome.RegistryEventType_Update,
+			ServiceId: info.Id,
 			Info:      &info,
 		})
 
