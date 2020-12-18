@@ -157,21 +157,21 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 
 	switch msg.Type {
 	case ome.RegistryEventType_Update.String(), ome.RegistryEventType_Register.String():
-		entry := &bome.DoubleMapEntry{
-			FirstKey:  peer.ID,
-			SecondKey: msg.Id,
-			Value:     string(msg.Encoded),
-		}
-		err := s.store.Save(entry)
+		info := new(ome.ServiceInfo)
+		err := json.Unmarshal(msg.Encoded, &info)
 		if err != nil {
-			log.Error("registry server • failed to store service info", log.Err(err))
+			log.Error("registry server • failed to decode service info", log.Err(err))
 			return
 		}
 
-		info := new(ome.ServiceInfo)
-		err = json.Unmarshal(msg.Encoded, &info)
+		entry := &bome.DoubleMapEntry{
+			FirstKey:  peer.ID,
+			SecondKey: info.Id,
+			Value:     string(msg.Encoded),
+		}
+		err = s.store.Save(entry)
 		if err != nil {
-			log.Error("registry server • failed to decode service info", log.Err(err))
+			log.Error("registry server • failed to store service info", log.Err(err))
 			return
 		}
 
