@@ -439,7 +439,7 @@ func (s *msgServer) DeregisterEventHandler(hid string) {
 	delete(s.handlers, hid)
 }
 
-func (s *msgServer) GetOfType(t ome.ServiceType) ([]*ome.ServiceInfo, error) {
+func (s *msgServer) GetOfType(t uint32) ([]*ome.ServiceInfo, error) {
 	var infoList []*ome.ServiceInfo
 	c, err := s.store.GetAll()
 	if err != nil {
@@ -473,7 +473,7 @@ func (s *msgServer) GetOfType(t ome.ServiceType) ([]*ome.ServiceInfo, error) {
 	return infoList, nil
 }
 
-func (s *msgServer) FirstOfType(t ome.ServiceType) (*ome.ServiceInfo, error) {
+func (s *msgServer) FirstOfType(t uint32) (*ome.ServiceInfo, error) {
 	c, err := s.store.GetAll()
 	if err != nil {
 		return nil, err

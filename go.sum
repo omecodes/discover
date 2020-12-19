@@ -284,6 +284,8 @@ github.com/omecodes/libome v0.0.0-20201219102229-efa9a08ca495 h1:NSy5KFgPAKW/OJe
 github.com/omecodes/libome v0.0.0-20201219102229-efa9a08ca495/go.mod h1:KDrBixAwkiu9Ooe/f0MRAbiD5GgQgOwDpCVm7sX2F84=
 github.com/omecodes/libome v0.0.0-20201219112332-e9e07f64c286 h1:o+ybdTFMhdoWJI8u2Mq1C5pP3msfjUsItA9PD/DDU18=
 github.com/omecodes/libome v0.0.0-20201219112332-e9e07f64c286/go.mod h1:KDrBixAwkiu9Ooe/f0MRAbiD5GgQgOwDpCVm7sX2F84=
+github.com/omecodes/libome v0.0.0-20201219124735-a637bef3a9bd h1:ye6QE+LlmhErp/BXic4Oih8goRH39luCudd8uQjQIN8=
+github.com/omecodes/libome v0.0.0-20201219124735-a637bef3a9bd/go.mod h1:KDrBixAwkiu9Ooe/f0MRAbiD5GgQgOwDpCVm7sX2F84=
 github.com/omecodes/zebou v0.0.0-20201218212929-8dbed76eaa74 h1:6Q5QXs8YkfV0/90it6x36xuSiGpnJvwnM1S12LbqGCc=
 github.com/omecodes/zebou v0.0.0-20201218212929-8dbed76eaa74/go.mod h1:BaVpxrNKtfAJKuAaOLwlLySTSLU7e2pv44UNXOzobKo=
 github.com/opentracing/opentracing-go v1.1.0 h1:pWlfV3Bxv7k65HYwkikxat0+s3pV4bsqf19k25Ur8rU=

@@ -149,7 +149,7 @@ func (m *MsgClient) DeregisterEventHandler(id string) {
 }
 
 // GetOfType gets all the service of type t
-func (m *MsgClient) GetOfType(t ome.ServiceType) ([]*ome.ServiceInfo, error) {
+func (m *MsgClient) GetOfType(t uint32) ([]*ome.ServiceInfo, error) {
 	var result []*ome.ServiceInfo
 	m.store.Range(func(key, value interface{}) bool {
 		info := value.(*ome.ServiceInfo)
@@ -166,7 +166,7 @@ func (m *MsgClient) GetOfType(t ome.ServiceType) ([]*ome.ServiceInfo, error) {
 }
 
 // FirstOfType returns the first service from local store of type t
-func (m *MsgClient) FirstOfType(t ome.ServiceType) (*ome.ServiceInfo, error) {
+func (m *MsgClient) FirstOfType(t uint32) (*ome.ServiceInfo, error) {
 	var info *ome.ServiceInfo
 	m.store.Range(func(key, value interface{}) bool {
 		info = value.(*ome.ServiceInfo)

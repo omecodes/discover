@@ -6,7 +6,7 @@ require (
 	github.com/google/uuid v1.1.2
 	github.com/omecodes/bome v0.0.0-20201212145154-cc0621995609
 	github.com/omecodes/common v0.0.0-20201205124409-0a391e4b4c08
-	github.com/omecodes/libome v0.0.0-20201219112332-e9e07f64c286
+	github.com/omecodes/libome v0.0.0-20201219124735-a637bef3a9bd
 	github.com/omecodes/zebou v0.0.0-20201218212929-8dbed76eaa74
 	github.com/pkg/errors v0.9.1 // indirect
 	golang.org/x/crypto v0.0.0-20201217014255-9d1352758620 // indirect
