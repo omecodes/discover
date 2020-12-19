@@ -5,25 +5,27 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/omecodes/bome"
-	"github.com/omecodes/common/errors"
-	"github.com/omecodes/common/netx"
-	"github.com/omecodes/common/utils/log"
-	"github.com/omecodes/libome"
-	"github.com/omecodes/zebou"
 	"net"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/google/uuid"
+	"github.com/omecodes/bome"
+	"github.com/omecodes/common/errors"
+	"github.com/omecodes/common/utils/log"
+	"github.com/omecodes/libome"
+	net2 "github.com/omecodes/libome/net"
+	"github.com/omecodes/zebou"
 )
 
 type ServerConfig struct {
-	Name         string
-	StoreDir     string
-	BindAddress  string
-	CertFilename string
-	KeyFilename  string
+	Name                 string
+	StoreDir             string
+	BindAddress          string
+	CertFilename         string
+	KeyFilename          string
+	ClientCACertFilename string
 }
 
 type msgServer struct {
@@ -33,6 +35,38 @@ type msgServer struct {
 	hub      *zebou.Hub
 	store    *bome.DoubleMap
 	name     string
+}
+
+func (s *msgServer) getFromClient(id string) ([]*ome.ServiceInfo, error) {
+	c, err := s.store.GetForFirst(id)
+	if err != nil {
+		log.Error("registry server • failed to get registered nodes", log.Field("conn_id", id))
+		return nil, err
+	}
+
+	defer func() {
+		if err := c.Close(); err != nil {
+			log.Error("registry server • failed to close cursor", log.Err(err))
+		}
+	}()
+
+	var result []*ome.ServiceInfo
+	for c.HasNext() {
+		o, err := c.Next()
+		if err != nil {
+			return nil, err
+		}
+
+		entry := o.(*bome.MapEntry)
+
+		var info ome.ServiceInfo
+		err = json.Unmarshal([]byte(entry.Value), &info)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, &info)
+	}
+	return result, nil
 }
 
 func (s *msgServer) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
@@ -117,38 +151,6 @@ func (s *msgServer) ClientQuit(ctx context.Context, peer *zebou.PeerInfo) {
 			Encoded: encoded,
 		})
 	}
-}
-
-func (s *msgServer) getFromClient(id string) ([]*ome.ServiceInfo, error) {
-	c, err := s.store.GetForFirst(id)
-	if err != nil {
-		log.Error("registry server • failed to get registered nodes", log.Field("conn_id", id))
-		return nil, err
-	}
-
-	defer func() {
-		if err := c.Close(); err != nil {
-			log.Error("registry server • failed to close cursor", log.Err(err))
-		}
-	}()
-
-	var result []*ome.ServiceInfo
-	for c.HasNext() {
-		o, err := c.Next()
-		if err != nil {
-			return nil, err
-		}
-
-		entry := o.(*bome.MapEntry)
-
-		var info ome.ServiceInfo
-		err = json.Unmarshal([]byte(entry.Value), &info)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, &info)
-	}
-	return result, nil
 }
 
 func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
@@ -519,22 +521,28 @@ func (s *msgServer) notifyEvent(e *ome.RegistryEvent) {
 
 func Serve(configs *ServerConfig) (ome.Registry, error) {
 	s := new(msgServer)
-	var opts []netx.ListenOption
+	var opts []net2.ListenOption
 
 	if configs.CertFilename != "" {
-		opts = append(opts, netx.Secure(configs.CertFilename, configs.KeyFilename))
+		opts = append(opts, net2.WithTLSParams(configs.CertFilename, configs.KeyFilename, configs.ClientCACertFilename))
 	}
 
 	s.name = configs.Name
 	var err error
-	s.listener, err = netx.Listen(configs.BindAddress, opts...)
+	s.listener, err = net2.Listen(configs.BindAddress, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	log.Info("[discovery] starting gRPC server", log.Field("at", s.listener.Addr()))
 
-	db, err := sql.Open("sqlite3", filepath.Join(configs.StoreDir, "registry.db"))
+	var filename string
+	if configs.StoreDir == "" {
+		filename = ":memory:"
+	} else {
+		filename = filepath.Join(configs.StoreDir, "registry.db")
+	}
+	db, err := sql.Open("sqlite3", filename)
 	if err != nil {
 		log.Error("could not open registry database", log.Err(err))
 		return nil, err
