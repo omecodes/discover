@@ -20,7 +20,6 @@ import (
 )
 
 type Server interface {
-	Stop() error
 	zebou.Handler
 	ome.Registry
 }
