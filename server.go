@@ -19,6 +19,12 @@ import (
 	"github.com/omecodes/zebou"
 )
 
+type Server interface {
+	Stop() error
+	zebou.Handler
+	ome.Registry
+}
+
 type ServerConfig struct {
 	Name                 string
 	StoreDir             string
@@ -519,7 +525,7 @@ func (s *msgServer) notifyEvent(e *ome.RegistryEvent) {
 	}
 }
 
-func Serve(configs *ServerConfig) (ome.Registry, error) {
+func Serve(configs *ServerConfig) (Server, error) {
 	s := new(msgServer)
 	var opts []net2.ListenOption
 
