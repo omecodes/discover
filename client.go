@@ -13,22 +13,33 @@ import (
 	"github.com/omecodes/zebou"
 )
 
+type ConnectionStateChangesHandler interface {
+	HandleConnectionState(connected bool)
+}
+
+type HandleConnectionStateFunc func(bool)
+
+func (f HandleConnectionStateFunc) HandleConnectionState(connected bool) {
+	f(connected)
+}
+
 // MsgClient is a zebou messaging based client client
 type MsgClient struct {
 	messenger *zebou.Client
 	store     *sync.Map
 	handlers  *sync.Map
+
+	connectionStateHandleMutex sync.Mutex
+	connectionChangesHandlers  map[string]ConnectionStateChangesHandler
+
+	bufferMutex    sync.Mutex
+	messagesBuffer []*zebou.ZeMsg
 }
 
 // RegisterService sends register message to the discovery server
 func (m *MsgClient) RegisterService(info *ome.ServiceInfo) error {
 
 	m.store.Store(info.Id, info)
-	m.notifyEvent(&ome.RegistryEvent{
-		Type:      ome.RegistryEventType_Register,
-		ServiceId: info.Id,
-		Info:      info,
-	})
 
 	encoded, err := json.Marshal(info)
 	if err != nil {
@@ -43,8 +54,17 @@ func (m *MsgClient) RegisterService(info *ome.ServiceInfo) error {
 	})
 	if err != nil {
 		log.Error("could not send message to server", log.Err(err))
+		return err
 	}
-	return err
+
+	m.notifyEvent(&ome.RegistryEvent{
+		Type:      ome.RegistryEventType_Register,
+		ServiceId: info.Id,
+		Info:      info,
+	})
+
+	log.Error("Registry • registered", log.Field("id", info.Id))
+	return nil
 }
 
 // DeregisterService sends a deregister message to the discovery server
@@ -65,8 +85,15 @@ func (m *MsgClient) DeregisterService(id string, nodes ...string) error {
 	err := m.messenger.SendMsg(msg)
 	if err != nil {
 		log.Error("could not send message to server", log.Err(err))
+		return err
 	}
-	return err
+
+	if len(nodes) > 0 {
+		log.Error("Registry • registered nodes", log.Field("id", id), log.Field("nodes", nodes))
+	} else {
+		log.Error("Registry • registered", log.Field("id", id))
+	}
+	return nil
 }
 
 // GetService returns service info from local store that matches id
@@ -258,11 +285,38 @@ func (m *MsgClient) notifyEvent(e *ome.RegistryEvent) {
 	})
 }
 
+func (m *MsgClient) notifyConnectionStateChanged(connected bool) {
+	m.connectionStateHandleMutex.Lock()
+	defer m.connectionStateHandleMutex.Unlock()
+	for _, handler := range m.connectionChangesHandlers {
+		go handler.HandleConnectionState(connected)
+	}
+}
+
+func (m *MsgClient) bufferMessages(msg ...*zebou.ZeMsg) {
+	m.bufferMutex.Lock()
+	defer m.bufferMutex.Unlock()
+	m.messagesBuffer = append(m.messagesBuffer, msg...)
+}
+
+func (m *MsgClient) sendBufferedMessages() {
+	m.bufferMutex.Lock()
+	defer m.bufferMutex.Unlock()
+	for _, msg := range m.messagesBuffer {
+		err := m.messenger.SendMsg(msg)
+		if err != nil {
+			log.Error("")
+		}
+	}
+}
+
 // NewZebouClient creates and initialize a zebou based registry client
 func NewZebouClient(server string, tlsConfig *tls.Config) *MsgClient {
 	c := new(MsgClient)
 	c.store = new(sync.Map)
 	c.handlers = new(sync.Map)
+
+	c.connectionChangesHandlers = map[string]ConnectionStateChangesHandler{}
 
 	c.messenger = zebou.NewClient(server, tlsConfig)
 	c.messenger.SetConnectionSateHandler(zebou.ConnectionStateHandlerFunc(func(active bool) {
@@ -275,14 +329,20 @@ func NewZebouClient(server string, tlsConfig *tls.Config) *MsgClient {
 					i.Id,
 					i,
 				)
-
 				if err != nil {
-					log.Error("failed to send message", log.Err(err))
+					log.Error("Registry • failed to send message", log.Err(err))
 					return false
 				}
+
+				log.Error("Registry • registered", log.Field("id", i.Id))
+
+				c.notifyEvent(&ome.RegistryEvent{
+					Type:      ome.RegistryEventType_Register,
+					ServiceId: i.Id,
+					Info:      i,
+				})
 				return true
 			})
-			log.Info("sent all info to server")
 		}
 	}))
 	c.messenger.Connect()
