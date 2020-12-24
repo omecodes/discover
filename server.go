@@ -529,7 +529,11 @@ func Serve(configs *ServerConfig) (Server, error) {
 	var opts []net2.ListenOption
 
 	if configs.CertFilename != "" {
-		opts = append(opts, net2.WithTLSParams(configs.CertFilename, configs.KeyFilename, configs.ClientCACertFilename))
+		if configs.ClientCACertFilename != "" {
+			opts = append(opts, net2.WithTLSParams(configs.CertFilename, configs.KeyFilename, configs.ClientCACertFilename))
+		} else {
+			opts = append(opts, net2.WithTLSParams(configs.CertFilename, configs.KeyFilename))
+		}
 	}
 
 	s.name = configs.Name
