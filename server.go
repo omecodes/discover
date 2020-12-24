@@ -371,12 +371,27 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 
 func (s *msgServer) GetService(id string) (*ome.ServiceInfo, error) {
 	var info ome.ServiceInfo
-	encoded, err := s.store.Get(s.name, id)
+	c, err := s.store.GetForSecond(id)
 	if err != nil {
 		return nil, err
 	}
 
-	err = json.Unmarshal([]byte(encoded), &info)
+	defer func() {
+		if err := c.Close(); err != nil {
+			log.Error("registry server • failed to close cursor", log.Err(err))
+		}
+	}()
+	if !c.HasNext() {
+		return nil, errors.NotFound
+	}
+
+	o, err := c.Next()
+	if err != nil {
+		return nil, err
+	}
+
+	entry := o.(*bome.MapEntry)
+	err = json.Unmarshal([]byte(entry.Value), &info)
 	return &info, err
 }
 
