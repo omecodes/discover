@@ -472,7 +472,7 @@ func (s *msgServer) GetOfType(t uint32) ([]*ome.ServiceInfo, error) {
 		}
 
 		if info.Type == t {
-			infoList = append(infoList, nil)
+			infoList = append(infoList, &info)
 		}
 	}
 	return infoList, nil
