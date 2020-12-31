@@ -4,7 +4,7 @@ go 1.13
 
 require (
 	github.com/google/uuid v1.1.2
-	github.com/omecodes/bome v0.0.0-20201212145154-cc0621995609
+	github.com/omecodes/bome v0.0.0-20201230233011-a6167e57610b
 	github.com/omecodes/common v0.0.0-20201205124409-0a391e4b4c08
 	github.com/omecodes/libome v0.0.0-20201219125050-603bd134339c
 	github.com/omecodes/zebou v0.0.0-20201218212929-8dbed76eaa74

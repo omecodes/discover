@@ -176,7 +176,7 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 			SecondKey: info.Id,
 			Value:     string(msg.Encoded),
 		}
-		err = s.store.Save(entry)
+		err = s.store.Upsert(entry)
 		if err != nil {
 			log.Error("registry server • failed to store service info", log.Err(err))
 			return
@@ -243,7 +243,7 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 			SecondKey: msg.Id,
 			Value:     string(newEncoded),
 		}
-		err = s.store.Save(entry)
+		err = s.store.Upsert(entry)
 		if err != nil {
 			log.Error("registry server • failed to update service info", log.Err(err), log.Field("service", msg.Id))
 			return
@@ -269,7 +269,7 @@ func (s *msgServer) RegisterService(info *ome.ServiceInfo) error {
 		return err
 	}
 
-	err = s.store.Save(&bome.DoubleMapEntry{
+	err = s.store.Upsert(&bome.DoubleMapEntry{
 		FirstKey:  s.name,
 		SecondKey: info.Id,
 		Value:     string(encoded),
@@ -332,7 +332,7 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 			return err
 		}
 
-		err = s.store.Save(&bome.DoubleMapEntry{
+		err = s.store.Upsert(&bome.DoubleMapEntry{
 			FirstKey:  s.name,
 			SecondKey: id,
 			Value:     string(newEncodedBytes),
