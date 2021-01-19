@@ -19,11 +19,6 @@ import (
 	"github.com/omecodes/zebou"
 )
 
-type Server interface {
-	zebou.Handler
-	ome.Registry
-}
-
 type ServerConfig struct {
 	Name                 string
 	StoreDir             string
@@ -33,7 +28,7 @@ type ServerConfig struct {
 	ClientCACertFilename string
 }
 
-type msgServer struct {
+type Server struct {
 	sync.Mutex
 	handlers map[string]ome.EventHandler
 	listener net.Listener
@@ -42,7 +37,7 @@ type msgServer struct {
 	name     string
 }
 
-func (s *msgServer) getFromClient(id string) ([]*ome.ServiceInfo, error) {
+func (s *Server) getFromClient(id string) ([]*ome.ServiceInfo, error) {
 	c, err := s.store.GetForFirst(id)
 	if err != nil {
 		log.Error("registry server • failed to get registered nodes", log.Field("conn_id", id))
@@ -74,7 +69,7 @@ func (s *msgServer) getFromClient(id string) ([]*ome.ServiceInfo, error) {
 	return result, nil
 }
 
-func (s *msgServer) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
+func (s *Server) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
 	if peer != nil {
 		log.Info("registry server • new client connected", log.Field("conn_id", peer.ID), log.Field("addr", peer.Address))
 	} else {
@@ -129,7 +124,7 @@ func (s *msgServer) NewClient(ctx context.Context, peer *zebou.PeerInfo) {
 	}
 }
 
-func (s *msgServer) ClientQuit(ctx context.Context, peer *zebou.PeerInfo) {
+func (s *Server) ClientQuit(ctx context.Context, peer *zebou.PeerInfo) {
 	log.Info("registry server • client disconnected", log.Field("conn_id", peer.ID), log.Field("addr", peer.Address))
 	services, err := s.getFromClient(peer.ID)
 	if err != nil {
@@ -158,7 +153,7 @@ func (s *msgServer) ClientQuit(ctx context.Context, peer *zebou.PeerInfo) {
 	}
 }
 
-func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
+func (s *Server) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 	peer := zebou.Peer(ctx)
 	go s.hub.Broadcast(ctx, msg)
 
@@ -262,7 +257,7 @@ func (s *msgServer) OnMessage(ctx context.Context, msg *zebou.ZeMsg) {
 	}
 }
 
-func (s *msgServer) RegisterService(info *ome.ServiceInfo) error {
+func (s *Server) RegisterService(info *ome.ServiceInfo) error {
 	encoded, err := json.Marshal(info)
 	if err != nil {
 		log.Error("registry server • failed to json encode info")
@@ -293,7 +288,7 @@ func (s *msgServer) RegisterService(info *ome.ServiceInfo) error {
 	return nil
 }
 
-func (s *msgServer) DeregisterService(id string, nodes ...string) error {
+func (s *Server) DeregisterService(id string, nodes ...string) error {
 	msg := &zebou.ZeMsg{
 		Id: id,
 	}
@@ -369,7 +364,7 @@ func (s *msgServer) DeregisterService(id string, nodes ...string) error {
 	return nil
 }
 
-func (s *msgServer) GetService(id string) (*ome.ServiceInfo, error) {
+func (s *Server) GetService(id string) (*ome.ServiceInfo, error) {
 	var info ome.ServiceInfo
 	c, err := s.store.GetForSecond(id)
 	if err != nil {
@@ -395,7 +390,7 @@ func (s *msgServer) GetService(id string) (*ome.ServiceInfo, error) {
 	return &info, err
 }
 
-func (s *msgServer) GetNode(id string, nodeName string) (*ome.Node, error) {
+func (s *Server) GetNode(id string, nodeName string) (*ome.Node, error) {
 	info, err := s.GetService(id)
 	if err != nil {
 		return nil, err
@@ -410,7 +405,7 @@ func (s *msgServer) GetNode(id string, nodeName string) (*ome.Node, error) {
 	return nil, errors.NotFound
 }
 
-func (s *msgServer) Certificate(id string) ([]byte, error) {
+func (s *Server) Certificate(id string) ([]byte, error) {
 	info, err := s.GetService(id)
 	if err != nil {
 		return nil, err
@@ -423,7 +418,7 @@ func (s *msgServer) Certificate(id string) ([]byte, error) {
 	return []byte(strCert), nil
 }
 
-func (s *msgServer) ConnectionInfo(id string, protocol ome.Protocol) (*ome.ConnectionInfo, error) {
+func (s *Server) ConnectionInfo(id string, protocol ome.Protocol) (*ome.ConnectionInfo, error) {
 	info, err := s.GetService(id)
 	if err != nil {
 		return nil, err
@@ -445,7 +440,7 @@ func (s *msgServer) ConnectionInfo(id string, protocol ome.Protocol) (*ome.Conne
 	return nil, errors.NotFound
 }
 
-func (s *msgServer) RegisterEventHandler(h ome.EventHandler) string {
+func (s *Server) RegisterEventHandler(h ome.EventHandler) string {
 	s.Lock()
 	defer s.Unlock()
 	hid := uuid.New().String()
@@ -453,13 +448,13 @@ func (s *msgServer) RegisterEventHandler(h ome.EventHandler) string {
 	return hid
 }
 
-func (s *msgServer) DeregisterEventHandler(hid string) {
+func (s *Server) DeregisterEventHandler(hid string) {
 	s.Lock()
 	defer s.Unlock()
 	delete(s.handlers, hid)
 }
 
-func (s *msgServer) GetOfType(t uint32) ([]*ome.ServiceInfo, error) {
+func (s *Server) GetOfType(t uint32) ([]*ome.ServiceInfo, error) {
 	var infoList []*ome.ServiceInfo
 	c, err := s.store.GetAll()
 	if err != nil {
@@ -493,7 +488,7 @@ func (s *msgServer) GetOfType(t uint32) ([]*ome.ServiceInfo, error) {
 	return infoList, nil
 }
 
-func (s *msgServer) FirstOfType(t uint32) (*ome.ServiceInfo, error) {
+func (s *Server) FirstOfType(t uint32) (*ome.ServiceInfo, error) {
 	c, err := s.store.GetAll()
 	if err != nil {
 		return nil, err
@@ -525,12 +520,12 @@ func (s *msgServer) FirstOfType(t uint32) (*ome.ServiceInfo, error) {
 	return nil, errors.NotFound
 }
 
-func (s *msgServer) Stop() error {
+func (s *Server) Stop() error {
 	_ = s.hub.Stop()
 	return s.listener.Close()
 }
 
-func (s *msgServer) notifyEvent(e *ome.RegistryEvent) {
+func (s *Server) notifyEvent(e *ome.RegistryEvent) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -539,8 +534,8 @@ func (s *msgServer) notifyEvent(e *ome.RegistryEvent) {
 	}
 }
 
-func Serve(configs *ServerConfig) (Server, error) {
-	s := new(msgServer)
+func Serve(configs *ServerConfig) (*Server, error) {
+	s := new(Server)
 	var opts []net2.ListenOption
 
 	if configs.CertFilename != "" {
