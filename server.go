@@ -567,7 +567,11 @@ func Serve(configs *ServerConfig) (*Server, error) {
 		return nil, err
 	}
 
-	s.store, err = bome.NewDoubleMap(db, bome.SQLite3, "registry")
+	s.store, err = bome.Build().
+		SetConn(db).
+		SetDialect(bome.SQLite3).
+		SetTableName("registry").
+		DoubleMap()
 	if err != nil {
 		return nil, err
 	}
